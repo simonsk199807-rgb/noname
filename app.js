@@ -4,19 +4,35 @@
 const DAYS_KEY     = 'ftc_days';      // 每日训练记录
 const DEFAULTS_KEY = 'ftc_defaults';  // 每个动作记忆的重量/组数/次数
 const CHECKINS_KEY = 'ftc_checkins';  // 体重打卡
+const DIET_KEY     = 'ftc_diet';      // 饮食记录
 
 let days     = {};
 let defaults = {};
 let checkins = [];
+let dietData = {};  // { "YYYY-MM-DD": { meals:{...}, water:0 } }
+let _viewDate = null;  // null = 今日，string = 历史某天
+let _dietDate = null;  // 饮食 tab 当前日期
 
 function loadAll() {
   try { days     = JSON.parse(localStorage.getItem(DAYS_KEY)     || '{}'); } catch { days = {}; }
   try { defaults = JSON.parse(localStorage.getItem(DEFAULTS_KEY) || '{}'); } catch { defaults = {}; }
   try { checkins = JSON.parse(localStorage.getItem(CHECKINS_KEY) || '[]'); } catch { checkins = []; }
+  try { dietData = JSON.parse(localStorage.getItem(DIET_KEY)     || '{}'); } catch { dietData = {}; }
 }
 function saveDays()     { localStorage.setItem(DAYS_KEY,     JSON.stringify(days));     }
 function saveDefaults() { localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults)); }
 function saveCheckins() { localStorage.setItem(CHECKINS_KEY, JSON.stringify(checkins)); }
+function saveDiet()     { localStorage.setItem(DIET_KEY,     JSON.stringify(dietData)); }
+
+function getDietDay(d) {
+  if (!dietData[d]) dietData[d] = { meals: {}, water: 0 };
+  return dietData[d];
+}
+function getMeal(d, mealId) {
+  const dd = getDietDay(d);
+  if (!dd.meals[mealId]) dd.meals[mealId] = { note: '', cal: '' };
+  return dd.meals[mealId];
+}
 
 function getDay(d) {
   if (!days[d]) days[d] = { tmpl: null, done: false, removedExs: [], addedExs: [], record: {}, lumbar: null, notes: '' };
@@ -42,6 +58,7 @@ function isDayDone(d) { return !!(days[d] && days[d].done); }
 
 // ── 初始化 ───────────────────────────────────
 function init() {
+  _viewDate = null;
   loadAll();
   renderHeader();
   initTabs();
@@ -69,17 +86,22 @@ function initTabs() {
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      if (btn.dataset.tab === 'today')    { _viewDate = null; renderToday(); }
       if (btn.dataset.tab === 'cal')      renderCal();
+      if (btn.dataset.tab === 'diet')     { _dietDate = _dietDate || todayStr(); renderDiet(); }
       if (btn.dataset.tab === 'progress') renderProgress();
     });
   });
 }
 
 // ── Today Tab ────────────────────────────────
-function renderToday() {
-  const today = todayStr();
-  const sched = SCHEDULE.find(x => x.d === today);
-  const day   = getDay(today);
+function renderToday(d) {
+  if (d === null) _viewDate = null;
+  else if (d !== undefined) _viewDate = d;
+  const target  = _viewDate || todayStr();
+  const isToday = target === todayStr();
+  const sched   = SCHEDULE.find(x => x.d === target);
+  const day     = getDay(target);
 
   // 自动应用 Jeff 推荐模板（只在用户还没选的时候）
   if (!day.tmpl && sched && sched.rec) {
@@ -92,7 +114,10 @@ function renderToday() {
 
   // 日期 + 模板标题行
   html += `<div class="today-hdr">
-    <div class="today-date">${fmtDate(today)} ${today === todayStr() ? '· 今日' : ''}</div>
+    <div class="today-date-row">
+      ${!isToday ? `<button class="back-today-btn" onclick="renderToday(null)">← 今日</button>` : ''}
+      <div class="today-date">${fmtDate(target)}${isToday ? ' · 今日' : ''}</div>
+    </div>
     <div class="tmpl-row">`;
 
   if (tmpl && TMPLS[tmpl]) {
@@ -103,7 +128,7 @@ function renderToday() {
     html += `<span style="font-size:14px;color:var(--mu);font-weight:700;">自由日</span>`;
   }
 
-  html += `<button class="switch-btn" onclick="openTmplPicker('${today}')">更换</button>
+  html += `<button class="switch-btn" onclick="openTmplPicker('${target}')">更换</button>
     </div></div>`;
 
   if (tmpl && TMPLS[tmpl]) {
@@ -124,7 +149,7 @@ function renderToday() {
       </div>`;
       sec.exs.forEach(ex => {
         if (removed.has(ex.id)) return;
-        html += buildExCard(today, ex);
+        html += buildExCard(target, ex);
       });
     });
 
@@ -137,7 +162,7 @@ function renderToday() {
       added.forEach(exId => {
         if (EX_INFO[exId]) {
           const ex = { id: exId, type: 'str', sets: 4, reps: 10, ru: '次' };
-          html += buildExCard(today, ex, true);
+          html += buildExCard(target, ex, true);
         }
       });
     }
@@ -146,14 +171,14 @@ function renderToday() {
     if (removed.size > 0) {
       html += `<div class="removed-bar">
         已移除 ${removed.size} 个动作
-        <button onclick="restoreAllExs('${today}')">全部恢复</button>
+        <button onclick="restoreAllExs('${target}')">全部恢复</button>
       </div>`;
     }
 
     // 底部操作
     html += `<div class="rest-note">💡 组间休息：对 Siri 说"嘿 Siri，90秒计时"</div>`;
-    html += `<button class="add-ex-btn" onclick="openAddEx('${today}')">＋ 添加动作</button>`;
-    html += `<button class="complete-btn${day.done ? ' done' : ''}" onclick="openCompleteSheet('${today}')">
+    html += `<button class="add-ex-btn" onclick="openAddEx('${target}')">＋ 添加动作</button>`;
+    html += `<button class="complete-btn${day.done ? ' done' : ''}" onclick="openCompleteSheet('${target}')">
       ${day.done ? '✓ 已完成 · 查看/修改记录' : '今日训练完成 ✓'}
     </button>`;
 
@@ -161,9 +186,9 @@ function renderToday() {
     // 未选模板
     html += `<div class="no-tmpl-card">
       <div class="no-tmpl-icon">🌿</div>
-      <div class="no-tmpl-text">今天没有计划训练</div>
+      <div class="no-tmpl-text">${isToday ? '今天' : fmtDate(target)}没有计划训练</div>
       <div class="no-tmpl-sub">想练的话可以选择训练类型</div>
-      <button class="btn-pick-tmpl" onclick="openTmplPicker('${today}')">选择训练类型</button>
+      <button class="btn-pick-tmpl" onclick="openTmplPicker('${target}')">选择训练类型</button>
     </div>`;
   }
 
@@ -490,6 +515,143 @@ function addExToday(d, exId) {
   renderToday();
 }
 
+// ── Diet Tab ──────────────────────────────────
+const MEALS = [
+  { id: 'breakfast', name: '早餐', icon: '🌅', time: '06:00–10:00' },
+  { id: 'lunch',     name: '午餐', icon: '☀️',  time: '11:00–14:00' },
+  { id: 'dinner',    name: '晚餐', icon: '🌙', time: '17:00–21:00' },
+  { id: 'snack',     name: '加餐', icon: '🍎', time: '其他时间' },
+];
+
+function moveDietDate(delta) {
+  const d   = new Date(_dietDate + 'T00:00:00');
+  d.setDate(d.getDate() + delta);
+  _dietDate = `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+  renderDiet();
+}
+
+function renderDiet() {
+  if (!_dietDate) _dietDate = todayStr();
+  const d      = _dietDate;
+  const today  = todayStr();
+  const isToday = d === today;
+  const dd     = getDietDay(d);
+
+  // 日期显示
+  const [y, m, dy] = d.split('-');
+  const dateLabel  = isToday ? '今天' : `${+m}月${+dy}日`;
+
+  // 总热量
+  const totalCal = MEALS.reduce((sum, meal) => {
+    const cal = parseFloat(dd.meals[meal.id]?.cal || 0);
+    return sum + (isNaN(cal) ? 0 : cal);
+  }, 0);
+
+  let html = `<div class="diet-wrap">
+    <div class="diet-nav">
+      <button class="diet-nav-btn" onclick="moveDietDate(-1)">‹</button>
+      <div style="text-align:center">
+        <div class="diet-nav-date">${dateLabel}</div>
+        ${!isToday ? `<div class="diet-nav-today" style="font-size:10px;color:var(--mu)">${+m}月${+dy}日</div>` : ''}
+      </div>
+      <button class="diet-nav-btn" onclick="moveDietDate(1)">›</button>
+    </div>
+
+    <div class="diet-body">
+      <div class="diet-summary">
+        <div class="diet-sum-item">
+          <div class="diet-sum-v highlight">${totalCal > 0 ? totalCal : '—'}</div>
+          <div class="diet-sum-l">总热量kcal</div>
+        </div>
+        <div class="diet-sum-item">
+          <div class="diet-sum-v">${dd.water || 0}</div>
+          <div class="diet-sum-l">饮水杯</div>
+        </div>
+        <div class="diet-sum-item">
+          <div class="diet-sum-v">${MEALS.filter(m => dd.meals[m.id]?.note || dd.meals[m.id]?.cal).length}</div>
+          <div class="diet-sum-l">已记餐次</div>
+        </div>
+      </div>
+
+      <div class="diet-ai-tip">💡 拍照记录食物 → 截图发给 Jeff 进行营养分析</div>`;
+
+  // 餐次卡片
+  MEALS.forEach(meal => {
+    const data = dd.meals[meal.id] || {};
+    html += `<div class="meal-card">
+      <div class="meal-hdr">
+        <div class="meal-hdr-left">
+          <span class="meal-icon">${meal.icon}</span>
+          <div>
+            <div class="meal-name">${meal.name}</div>
+            <div class="meal-time">${meal.time}</div>
+          </div>
+        </div>
+        <span class="meal-cal-badge">${data.cal ? data.cal + ' kcal' : '— kcal'}</span>
+      </div>
+      <div class="meal-body">
+        <textarea class="meal-note-inp" placeholder="吃了什么？（可以不填，拍照即可）"
+          onchange="updMeal('${d}','${meal.id}','note',this.value)">${data.note || ''}</textarea>
+        <div class="meal-cal-row">
+          <label>预估热量</label>
+          <input type="number" inputmode="numeric" class="meal-cal-inp"
+            value="${data.cal || ''}" placeholder="0"
+            onchange="updMeal('${d}','${meal.id}','cal',this.value)">
+          <span style="font-size:12px;color:var(--mu)">kcal</span>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  // 饮水
+  html += `<div class="water-card">
+    <div class="water-title">💧 今日饮水</div>
+    <div class="water-cups" id="water-cups">
+      ${[1,2,3,4,5,6,7,8].map(i => `
+        <div class="water-cup${(dd.water || 0) >= i ? ' filled' : ''}"
+          onclick="toggleWater('${d}',${i})">💧</div>`).join('')}
+    </div>
+    <div class="water-note">每杯 250ml · 目标 8 杯（2000ml）· 已喝 ${(dd.water || 0) * 250}ml</div>
+  </div>
+
+  </div></div>`;
+
+  document.getElementById('diet-content').innerHTML = html;
+}
+
+function updMeal(d, mealId, field, value) {
+  const m = getMeal(d, mealId);
+  m[field] = value;
+  saveDiet();
+  // 更新汇总数字（不整体重渲染，避免失焦）
+  const dd = getDietDay(d);
+  const totalCal = MEALS.reduce((sum, meal) => {
+    const cal = parseFloat(dd.meals[meal.id]?.cal || 0);
+    return sum + (isNaN(cal) ? 0 : cal);
+  }, 0);
+  const sumEl = document.querySelector('.diet-sum-v.highlight');
+  if (sumEl) sumEl.textContent = totalCal > 0 ? totalCal : '—';
+  const badgeEls = document.querySelectorAll('.meal-cal-badge');
+  const mealIdx = MEALS.findIndex(m => m.id === mealId);
+  if (mealIdx >= 0 && badgeEls[mealIdx]) {
+    badgeEls[mealIdx].textContent = value ? value + ' kcal' : '— kcal';
+  }
+}
+
+function toggleWater(d, cups) {
+  const dd = getDietDay(d);
+  dd.water = (dd.water || 0) === cups ? cups - 1 : cups;
+  saveDiet();
+  // 更新水杯显示
+  document.querySelectorAll('.water-cup').forEach((el, i) => {
+    el.classList.toggle('filled', i < dd.water);
+  });
+  document.querySelector('.water-note').textContent =
+    `每杯 250ml · 目标 8 杯（2000ml）· 已喝 ${dd.water * 250}ml`;
+  const sumEl = document.querySelectorAll('.diet-sum-v')[1];
+  if (sumEl) sumEl.textContent = dd.water || 0;
+}
+
 // ── Calendar Tab ─────────────────────────────
 function renderCal() {
   const today = todayStr();
@@ -518,7 +680,7 @@ function renderCal() {
       const tmpl = (days[d] && days[d].tmpl) || item.rec;
       let cls = ['dc', d === today ? 'today' : '', done ? 'done-day' : '', tmpl && TMPLS[tmpl] ? 't'+tmpl : ''].filter(Boolean).join(' ');
       const [, , dy] = d.split('-');
-      html += `<div class="${cls}">
+      html += `<div class="${cls}" onclick="goToDay('${d}')">
         <div class="dc-num">${+dy}</div>
         ${tmpl && TMPLS[tmpl] ? `<div class="dc-badge">${TMPLS[tmpl].icon}</div>` : '<div class="dc-label">休</div>'}
         ${done ? `<span class="dc-done">✅</span>` : ''}
@@ -529,6 +691,14 @@ function renderCal() {
 
   html += `</div>`;
   document.getElementById('cal-content').innerHTML = html;
+}
+
+function goToDay(d) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('.tab[data-tab="today"]').classList.add('active');
+  document.getElementById('tab-today').classList.add('active');
+  renderToday(d);
 }
 
 // ── Progress Tab ─────────────────────────────

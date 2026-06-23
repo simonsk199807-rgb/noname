@@ -26,6 +26,7 @@
 <nav class="tab-bar">
   <button class="tab active" data-tab="today">今日</button>
   <button class="tab" data-tab="cal">日历</button>
+  <button class="tab" data-tab="diet">饮食</button>
   <button class="tab" data-tab="progress">进度</button>
 </nav>
 
@@ -35,6 +36,10 @@
 
 <main id="tab-cal" class="tab-pane">
   <div id="cal-content"></div>
+</main>
+
+<main id="tab-diet" class="tab-pane">
+  <div id="diet-content"></div>
 </main>
 
 <main id="tab-progress" class="tab-pane">
@@ -87,5 +92,6 @@
 
 <script src="data.js"></script>
 <script src="app.js"></script>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
 </body>
 </html>
