@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="健身">
+<title>Tim · 健身</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-top">
+    <div>
+      <h1 class="hdr-title">💪 健身</h1>
+      <div class="hdr-sub" id="hdr-sub"></div>
+    </div>
+    <span class="phase-chip" id="phase-chip"></span>
+  </div>
+  <div class="hdr-stats" id="hdr-stats"></div>
+</header>
+
+<nav class="tab-bar">
+  <button class="tab active" data-tab="today">今日</button>
+  <button class="tab" data-tab="cal">日历</button>
+  <button class="tab" data-tab="progress">进度</button>
+</nav>
+
+<main id="tab-today" class="tab-pane active">
+  <div id="today-content"></div>
+</main>
+
+<main id="tab-cal" class="tab-pane">
+  <div id="cal-content"></div>
+</main>
+
+<main id="tab-progress" class="tab-pane">
+  <div id="progress-content"></div>
+</main>
+
+<!-- 动作说明弹窗 -->
+<div class="sheet-ov" id="ex-modal-ov">
+  <div class="sheet" id="ex-modal">
+    <div class="sheet-handle"></div>
+    <button class="sheet-close" id="ex-modal-close">×</button>
+    <div id="ex-modal-body"></div>
+  </div>
+</div>
+
+<!-- 完成确认单 -->
+<div class="sheet-ov" id="complete-ov">
+  <div class="sheet sheet-tall" id="complete-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hdr">
+      <div class="sheet-title">今日记录确认</div>
+      <button class="sheet-close-sm" onclick="closeSheet('complete-ov')">×</button>
+    </div>
+    <div id="complete-body"></div>
+  </div>
+</div>
+
+<!-- 模板选择 -->
+<div class="sheet-ov" id="tmpl-ov">
+  <div class="sheet" id="tmpl-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">选择今日训练</div>
+    <div id="tmpl-pick-body"></div>
+  </div>
+</div>
+
+<!-- 添加动作 -->
+<div class="sheet-ov" id="add-ex-ov">
+  <div class="sheet" id="add-ex-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hdr">
+      <div class="sheet-title">添加动作</div>
+      <button class="sheet-close-sm" onclick="closeSheet('add-ex-ov')">×</button>
+    </div>
+    <div id="add-ex-list"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
