@@ -1,9 +1,11 @@
-const CACHE = 'ftc-v2';
+const APP_VERSION = '2026.07.05.1';
+const CACHE = `ftc-${APP_VERSION}`;
 const ASSETS = [
   './index.html',
   './style.css',
   './app.js',
   './data.js',
+  './version.js',
   './manifest.json',
   './icon.png'
 ];
@@ -22,8 +24,15 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('fetch', e => {
-  e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
-  );
+  const req = e.request;
+  if (req.mode === 'navigate') {
+    e.respondWith(fetch(req).catch(() => caches.match('./index.html')));
+    return;
+  }
+  e.respondWith(caches.match(req).then(cached => cached || fetch(req)));
 });

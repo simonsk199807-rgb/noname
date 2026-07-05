@@ -5,24 +5,51 @@ const DAYS_KEY     = 'ftc_days';      // 每日训练记录
 const DEFAULTS_KEY = 'ftc_defaults';  // 每个动作记忆的重量/组数/次数
 const CHECKINS_KEY = 'ftc_checkins';  // 体重打卡
 const DIET_KEY     = 'ftc_diet';      // 饮食记录
+const USER_LINKS_KEY = 'ftc_user_links';          // 用户添加的动作外部链接
+const USER_TEMPLATES_KEY = 'ftc_user_templates';  // 用户自定义训练模板
+const POSTURE_KEY = 'ftc_posture_assessment';     // 体型体态评估
+const GOALS_KEY = 'ftc_goals';                    // 阶段目标
+const PHASE_NOTES_KEY = 'ftc_phase_notes';        // 阶段反馈 / 疼痛维护记录
+const SPORT_PERF_KEY = 'ftc_sport_perf';          // 其他运动表现
 
 let days     = {};
 let defaults = {};
 let checkins = [];
 let dietData = {};  // { "YYYY-MM-DD": { meals:{...}, water:0 } }
+let userLinks = {};      // { exId: [{ title, platform, url }] }
+let userTemplates = {};  // { tmplId: template }
+let postureData = null;
+let goals = [];
+let phaseNotes = [];
+let sportPerf = [];
 let _viewDate = null;  // null = 今日，string = 历史某天
 let _dietDate = null;  // 饮食 tab 当前日期
+let _editingTmplId = null;
+let _pendingUpdateWorker = null;
 
 function loadAll() {
   try { days     = JSON.parse(localStorage.getItem(DAYS_KEY)     || '{}'); } catch { days = {}; }
   try { defaults = JSON.parse(localStorage.getItem(DEFAULTS_KEY) || '{}'); } catch { defaults = {}; }
   try { checkins = JSON.parse(localStorage.getItem(CHECKINS_KEY) || '[]'); } catch { checkins = []; }
   try { dietData = JSON.parse(localStorage.getItem(DIET_KEY)     || '{}'); } catch { dietData = {}; }
+  try { userLinks = JSON.parse(localStorage.getItem(USER_LINKS_KEY) || '{}'); } catch { userLinks = {}; }
+  try { userTemplates = JSON.parse(localStorage.getItem(USER_TEMPLATES_KEY) || '{}'); } catch { userTemplates = {}; }
+  try { postureData = JSON.parse(localStorage.getItem(POSTURE_KEY) || 'null'); } catch { postureData = null; }
+  try { goals = JSON.parse(localStorage.getItem(GOALS_KEY) || 'null') || defaultGoals(); } catch { goals = defaultGoals(); }
+  try { phaseNotes = JSON.parse(localStorage.getItem(PHASE_NOTES_KEY) || '[]'); } catch { phaseNotes = []; }
+  try { sportPerf = JSON.parse(localStorage.getItem(SPORT_PERF_KEY) || '[]'); } catch { sportPerf = []; }
+  migrateOldTemplates();
 }
 function saveDays()     { localStorage.setItem(DAYS_KEY,     JSON.stringify(days));     }
 function saveDefaults() { localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults)); }
 function saveCheckins() { localStorage.setItem(CHECKINS_KEY, JSON.stringify(checkins)); }
 function saveDiet()     { localStorage.setItem(DIET_KEY,     JSON.stringify(dietData)); }
+function saveUserLinks() { localStorage.setItem(USER_LINKS_KEY, JSON.stringify(userLinks)); }
+function saveUserTemplates() { localStorage.setItem(USER_TEMPLATES_KEY, JSON.stringify(userTemplates)); }
+function savePosture() { localStorage.setItem(POSTURE_KEY, JSON.stringify(postureData)); }
+function saveGoals() { localStorage.setItem(GOALS_KEY, JSON.stringify(goals)); }
+function savePhaseNotes() { localStorage.setItem(PHASE_NOTES_KEY, JSON.stringify(phaseNotes)); }
+function saveSportPerf() { localStorage.setItem(SPORT_PERF_KEY, JSON.stringify(sportPerf)); }
 
 function getDietDay(d) {
   if (!dietData[d]) dietData[d] = { meals: {}, water: 0 };
@@ -45,6 +72,10 @@ function todayStr() {
   return `${n.getFullYear()}-${p2(n.getMonth()+1)}-${p2(n.getDate())}`;
 }
 function p2(n) { return String(n).padStart(2, '0'); }
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+function attr(v) { return esc(v).replace(/`/g, '&#96;'); }
 function fmtDate(ds) {
   if (!ds) return '';
   const [, m, d] = ds.split('-');
@@ -55,6 +86,122 @@ function wdayIdx(ds) {
   return d === 0 ? 6 : d - 1;
 }
 function isDayDone(d) { return !!(days[d] && days[d].done); }
+function allTemplates() { return Object.assign({}, TMPLS, userTemplates); }
+function getTemplate(id) { return allTemplates()[id]; }
+function defaultGoals() {
+  return (typeof DEFAULT_GOALS !== 'undefined' ? DEFAULT_GOALS : []).map(g => Object.assign({}, g));
+}
+function defaultTemplateKey(id) {
+  const t = userTemplates[id];
+  return t && t.baseKey && TMPLS[t.baseKey] ? t.baseKey : (TMPLS[id] ? id : null);
+}
+function moduleLabel(sec) {
+  return (typeof MODULE_LABELS !== 'undefined' && sec.module && MODULE_LABELS[sec.module]) ? MODULE_LABELS[sec.module] : (sec.title || '模块');
+}
+function cloneTemplate(t) {
+  return JSON.parse(JSON.stringify(t));
+}
+function buildExFromInfo(exId, overrides) {
+  const info = EX_INFO[exId] || {};
+  const def = info.defaults || {};
+  return Object.assign({
+    id: exId,
+    type: def.type || 'str',
+    sets: def.sets || 4,
+    reps: def.reps || 10,
+    ru: def.unit || '次',
+  }, overrides || {});
+}
+function getExerciseLinks(exId) {
+  const info = EX_INFO[exId] || {};
+  return [...(info.links || info.videos || []), ...((userLinks && userLinks[exId]) || [])];
+}
+function dateDiffDays(a, b) {
+  return Math.ceil((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 86400000);
+}
+function scheduledItems() {
+  return SCHEDULE.filter(x => x.rec);
+}
+function completedItems() {
+  return scheduledItems().filter(x => isDayDone(x.d));
+}
+function phaseWindowLabel() {
+  const official = PHASE.officialStartDate ? ` · 9月1日正式启用` : '';
+  return `${fmtDate(PHASE.startDate)}-${fmtDate(PHASE.testEndDate || PHASE.endDate)} 测试${official}`;
+}
+function lastDoneTraining() {
+  const ds = Object.keys(days).filter(d => days[d] && days[d].done).sort();
+  if (!ds.length) return null;
+  const d = ds[ds.length - 1];
+  const t = getTemplate(days[d].tmpl);
+  return { date: d, label: t ? `${t.icon} ${t.label}` : '自由训练' };
+}
+function cardioStats() {
+  let sessions = 0;
+  let minutes = 0;
+  let hrs = [];
+  Object.values(days).forEach(day => {
+    if (!day || !day.done || !day.record) return;
+    Object.entries(day.record).forEach(([exId, rec]) => {
+      const info = EX_INFO[exId] || {};
+      const isCardio = (info.defaults && info.defaults.type === 'cardio') || exId.includes('zone2') || exId === 'walk';
+      if (!isCardio) return;
+      const dur = parseFloat(rec.dur || rec.duration || 0);
+      const hr = parseFloat(rec.hr || 0);
+      if (dur > 0) { sessions += 1; minutes += dur; }
+      if (hr > 0) hrs.push(hr);
+    });
+  });
+  const avgHr = hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null;
+  return { sessions, minutes, avgHr };
+}
+function moduleCompletionStats() {
+  let corePlanned = 0, coreDone = 0, stretchPlanned = 0, stretchDone = 0;
+  scheduledItems().forEach(item => {
+    const day = days[item.d] || {};
+    const t = getTemplate(day.tmpl || item.rec);
+    if (!t) return;
+    const hasCore = (t.sections || []).some(sec => sec.module === 'core');
+    const hasStretch = (t.sections || []).some(sec => sec.module === 'stretch');
+    if (hasCore) corePlanned += 1;
+    if (hasStretch) stretchPlanned += 1;
+    if (day.done && hasCore) coreDone += 1;
+    if (day.done && hasStretch) stretchDone += 1;
+  });
+  return {
+    core: corePlanned ? Math.round(coreDone / corePlanned * 100) : 0,
+    stretch: stretchPlanned ? Math.round(stretchDone / stretchPlanned * 100) : 0,
+  };
+}
+function linkStats() {
+  const ids = Object.keys(EX_INFO || {});
+  const linked = ids.filter(id => getExerciseLinks(id).length > 0).length;
+  const userAdded = Object.values(userLinks || {}).reduce((sum, arr) => sum + (arr || []).length, 0);
+  return { total: ids.length, linked, userAdded };
+}
+function latestPhaseNote() {
+  if (!phaseNotes.length) return null;
+  const sorted = [...phaseNotes].sort((a, b) => a.date.localeCompare(b.date));
+  return sorted[sorted.length - 1];
+}
+function latestSport() {
+  if (!sportPerf.length) return null;
+  const sorted = [...sportPerf].sort((a, b) => a.date.localeCompare(b.date));
+  return sorted[sorted.length - 1];
+}
+function migrateOldTemplates() {
+  let changed = false;
+  Object.entries(days).forEach(([d, day]) => {
+    if (day && day.tmpl === 'U') {
+      const sched = SCHEDULE.find(x => x.d === d);
+      if (sched && sched.rec) {
+        day.tmpl = sched.rec;
+        changed = true;
+      }
+    }
+  });
+  if (changed) saveDays();
+}
 
 // ── 初始化 ───────────────────────────────────
 function init() {
@@ -68,14 +215,14 @@ function init() {
 // ── Header ───────────────────────────────────
 function renderHeader() {
   document.getElementById('phase-chip').textContent = `Phase ${PHASE.num}`;
-  document.getElementById('hdr-sub').textContent = `${PHASE.label} · 至 ${fmtDate(PHASE.endDate)}`;
+  document.getElementById('hdr-sub').textContent = `${PHASE.label} · ${phaseWindowLabel()}`;
   const total = SCHEDULE.filter(x => x.rec).length;
   const done  = SCHEDULE.filter(x => isDayDone(x.d)).length;
-  const remaining = Math.max(0, Math.ceil((new Date(PHASE.endDate + 'T00:00:00') - new Date()) / 86400000));
+  const remaining = Math.max(0, dateDiffDays(PHASE.testEndDate || PHASE.endDate, todayStr()));
   document.getElementById('hdr-stats').innerHTML = `
     <div class="stat"><span class="stat-v">${done}/${total}</span><span class="stat-l">已完成</span></div>
     <div class="stat"><span class="stat-v">${total ? Math.round(done/total*100) : 0}%</span><span class="stat-l">完成率</span></div>
-    <div class="stat"><span class="stat-v">${remaining}</span><span class="stat-l">剩余天</span></div>`;
+    <div class="stat"><span class="stat-v">${remaining}</span><span class="stat-l">测试剩余</span></div>`;
 }
 
 // ── Tabs ─────────────────────────────────────
@@ -110,6 +257,7 @@ function renderToday(d) {
   }
 
   const tmpl = day.tmpl;
+  const tmplObj = getTemplate(tmpl);
   let html = `<div class="today-wrap">`;
 
   // 日期 + 模板标题行
@@ -120,10 +268,11 @@ function renderToday(d) {
     </div>
     <div class="tmpl-row">`;
 
-  if (tmpl && TMPLS[tmpl]) {
-    const t = TMPLS[tmpl];
-    html += `<span class="tmpl-badge bg-${t.color}">${t.icon} ${t.label}</span>`;
+  if (tmpl && tmplObj) {
+    const t = tmplObj;
+    html += `<span class="tmpl-badge bg-${t.color}">${t.icon} ${esc(t.label)}</span>`;
     if (sched && sched.rec === tmpl) html += `<span class="jeff-rec">⚡ Jeff 推荐</span>`;
+    if (userTemplates[tmpl]) html += `<span class="user-tmpl-chip">我的模板</span>`;
   } else {
     html += `<span style="font-size:14px;color:var(--mu);font-weight:700;">自由日</span>`;
   }
@@ -131,13 +280,24 @@ function renderToday(d) {
   html += `<button class="switch-btn" onclick="openTmplPicker('${target}')">更换</button>
     </div></div>`;
 
-  if (tmpl && TMPLS[tmpl]) {
-    const t = TMPLS[tmpl];
+  if (tmpl && tmplObj) {
+    const t = tmplObj;
     const removed = new Set(day.removedExs || []);
     const added   = day.addedExs || [];
+    const visibleCount = t.sections.reduce((sum, sec) => sum + sec.exs.filter(ex => !removed.has(ex.id)).length, 0) + added.length;
+
+    html += `<div class="module-summary">
+      ${(t.sections || []).map(sec => `<span>${esc(moduleLabel(sec))}</span>`).join('')}
+    </div>`;
+    html += `<div class="today-tools">
+      <button onclick="saveDayAsTemplate('${target}')">保存为我的模板</button>
+      <button onclick="openTemplateEditor('${target}')">编辑模板动作</button>
+      <button onclick="restoreDefaultTemplate('${target}')">恢复默认</button>
+    </div>`;
+    html += `<div class="today-progress-line"><span>${visibleCount} 个动作</span><span>模块固定 · 当天可调整</span></div>`;
 
     // 警告条
-    if (t.warn) html += `<div class="warn-bar"><span>⚠️</span><span>${t.warn}</span></div>`;
+    if (t.warn) html += `<div class="warn-bar"><span>⚠️</span><span>${esc(t.warn)}</span></div>`;
 
     // 动作列表
     t.sections.forEach(sec => {
@@ -145,7 +305,7 @@ function renderToday(d) {
       if (!hasVisible) return;
       html += `<div class="sec-hdr">
         <div class="sec-dot sec-dot-${sec.dot}"></div>
-        <div class="sec-title">${sec.title}</div>
+        <div class="sec-title"><span>${esc(moduleLabel(sec))}</span><strong>${esc(sec.title || moduleLabel(sec))}</strong></div>
       </div>`;
       sec.exs.forEach(ex => {
         if (removed.has(ex.id)) return;
@@ -157,11 +317,11 @@ function renderToday(d) {
     if (added.length > 0) {
       html += `<div class="sec-hdr">
         <div class="sec-dot sec-dot-gn"></div>
-        <div class="sec-title">额外动作</div>
+        <div class="sec-title"><span>自定义</span><strong>额外动作</strong></div>
       </div>`;
       added.forEach(exId => {
         if (EX_INFO[exId]) {
-          const ex = { id: exId, type: 'str', sets: 4, reps: 10, ru: '次' };
+          const ex = buildExFromInfo(exId);
           html += buildExCard(target, ex, true);
         }
       });
@@ -212,15 +372,17 @@ function buildExCard(d, ex, isAdded) {
   } else {
     meta = ex.dur || (ex.sets ? `${ex.sets} × ${ex.reps || '?'} ${ex.ru || ''}` : '');
   }
+  const linkCount = getExerciseLinks(ex.id).length;
 
   return `<div class="ex-card">
     <div class="ex-main">
-      <div class="ex-name">${info.name}</div>
-      <div class="ex-meta">${meta}</div>
-      ${ex.note ? `<div class="ex-note">💡 ${ex.note}</div>` : ''}
+      <div class="ex-name">${esc(info.name)}</div>
+      <div class="ex-meta">${esc(meta)}</div>
+      ${ex.note ? `<div class="ex-note">💡 ${esc(ex.note)}</div>` : ''}
     </div>
     <div class="ex-btns">
-      <button class="ex-q-btn" onclick="openExModal('${ex.id}')">?</button>
+      ${linkCount ? `<button class="ex-link-btn" onclick="openExModal('${ex.id}')">↗ ${linkCount}</button>` : ''}
+      <button class="ex-q-btn" onclick="openExModal('${ex.id}')">说明</button>
       <button class="ex-rm-btn" onclick="removeEx('${d}','${ex.id}',${!!isAdded})">✕</button>
     </div>
   </div>`;
@@ -249,13 +411,13 @@ function restoreAllExs(d) {
 function openTmplPicker(d) {
   const day = getDay(d);
   let html = `<div class="tmpl-options">`;
-  Object.entries(TMPLS).forEach(([k, t]) => {
+  Object.entries(allTemplates()).forEach(([k, t]) => {
     const isCurr = day.tmpl === k;
     html += `<button class="tmpl-opt-btn${isCurr ? ' active-' + t.color : ''}" onclick="selectTmpl('${d}','${k}')">
       <span class="to-icon">${t.icon}</span>
       <div class="to-text">
-        <div class="to-label">${t.label}</div>
-        <div class="to-sub">${t.sub}</div>
+        <div class="to-label">${esc(t.label)}${userTemplates[k] ? '<span class="mini-chip">我的</span>' : ''}</div>
+        <div class="to-sub">${esc(t.sub || '')}</div>
       </div>
     </button>`;
   });
@@ -279,13 +441,13 @@ function selectTmpl(d, tmpl) {
 function openCompleteSheet(d) {
   const day  = getDay(d);
   const tmpl = day.tmpl;
-  if (!tmpl || !TMPLS[tmpl]) return;
+  const t = getTemplate(tmpl);
+  if (!tmpl || !t) return;
 
-  const t       = TMPLS[tmpl];
   const removed = new Set(day.removedExs || []);
   const rec     = day.record || {};
 
-  let html = `<div class="cs-date">${fmtDate(d)} · ${t.icon} ${t.label}</div>`;
+  let html = `<div class="cs-date">${fmtDate(d)} · ${t.icon} ${esc(t.label)}</div>`;
 
   // 力量动作
   const strExs = [];
@@ -293,7 +455,7 @@ function openCompleteSheet(d) {
     if (!removed.has(ex.id) && ex.type === 'str') strExs.push(ex);
   }));
   (day.addedExs || []).forEach(exId => {
-    if (EX_INFO[exId]) strExs.push({ id: exId, type: 'str', sets: 4, reps: 10, ru: '次' });
+    if (EX_INFO[exId]) strExs.push(buildExFromInfo(exId));
   });
 
   if (strExs.length) {
@@ -306,7 +468,7 @@ function openCompleteSheet(d) {
       const sets = recEx.sets !== undefined ? recEx.sets : (dflt.sets || ex.sets || 4);
       const reps = recEx.reps !== undefined ? recEx.reps : (dflt.reps || ex.reps || 10);
       html += `<div class="cs-ex-row">
-        <div class="cs-ex-name">${info.name}</div>
+        <div class="cs-ex-name">${esc(info.name)}</div>
         <div class="cs-fields">
           <div class="cs-field">
             <input type="number" step="0.5" inputmode="decimal" value="${w}" placeholder="重量"
@@ -339,7 +501,7 @@ function openCompleteSheet(d) {
       const info  = EX_INFO[ex.id] || { name: ex.id };
       const recEx = rec[ex.id] || {};
       html += `<div class="cs-ex-row">
-        <div class="cs-ex-name">${info.name}</div>
+        <div class="cs-ex-name">${esc(info.name)}</div>
         <div class="cs-fields">
           <div class="cs-field">
             <input type="number" inputmode="numeric" value="${recEx.dur || ''}" placeholder="时长"
@@ -371,7 +533,7 @@ function openCompleteSheet(d) {
   // 备注
   html += `<div class="cs-sec-title">训练备注</div>
   <textarea class="cs-notes" placeholder="今日感受、调整等..."
-    onchange="csSetNotes('${d}',this.value)">${day.notes || ''}</textarea>`;
+    onchange="csSetNotes('${d}',this.value)">${esc(day.notes || '')}</textarea>`;
 
   html += `<button class="cs-save-btn" onclick="saveCompletion('${d}')">保存记录 ✓</button>`;
 
@@ -406,10 +568,11 @@ function csSetNotes(d, v) {
 function saveCompletion(d) {
   const day  = getDay(d);
   const tmpl = day.tmpl;
+  const t = getTemplate(tmpl);
 
   // 把今日填写的值更新到 defaults（下次自动带入）
-  if (tmpl && TMPLS[tmpl] && day.record) {
-    TMPLS[tmpl].sections.forEach(sec => sec.exs.forEach(ex => {
+  if (tmpl && t && day.record) {
+    t.sections.forEach(sec => sec.exs.forEach(ex => {
       if (ex.type === 'str' && day.record[ex.id]) {
         const r = day.record[ex.id];
         defaults[ex.id] = Object.assign(defaults[ex.id] || {}, {
@@ -445,33 +608,95 @@ function saveCompletion(d) {
 function openExModal(exId) {
   const info = EX_INFO[exId];
   if (!info) return;
+  const links = getExerciseLinks(exId);
 
-  let h = `<div class="m-name">${info.name}</div><div class="m-type">${info.tl}</div>`;
+  let h = `<div class="m-name">${esc(info.name)}</div><div class="m-type">${esc(info.tl)}</div>`;
   h += `<div class="muscle-chips">
-    ${(info.p || []).map(m => `<span class="mc-chip mc-p">${m}</span>`).join('')}
-    ${(info.s || []).map(m => `<span class="mc-chip mc-s">${m}</span>`).join('')}
+    ${(info.p || []).map(m => `<span class="mc-chip mc-p">${esc(m)}</span>`).join('')}
+    ${(info.s || []).map(m => `<span class="mc-chip mc-s">${esc(m)}</span>`).join('')}
   </div>`;
+
+  if (info.purpose) {
+    h += `<div class="purpose-box"><div class="m-sec-title">训练目的</div><div>${esc(info.purpose)}</div></div>`;
+  }
 
   if (info.tech && info.tech.length) {
     h += `<div class="m-sec-title">动作要领</div><ul class="tech-ul">`;
-    info.tech.forEach((t, i) => { h += `<li><span class="t-n t-ng">${i+1}</span><span>${t}</span></li>`; });
+    info.tech.forEach((t, i) => { h += `<li><span class="t-n t-ng">${i+1}</span><span>${esc(t)}</span></li>`; });
     h += `</ul>`;
   }
   if (info.err && info.err.length) {
     h += `<div class="m-sec-title">常见错误</div><ul class="err-ul">`;
-    info.err.forEach((e, i) => { h += `<li><span class="t-n t-na">${i+1}</span><span>${e}</span></li>`; });
+    info.err.forEach((e, i) => { h += `<li><span class="t-n t-na">${i+1}</span><span>${esc(e)}</span></li>`; });
     h += `</ul>`;
   }
-  if (info.warn) h += `<div class="m-warn-box">⚠️ ${info.warn}</div>`;
-  if (info.videos && info.videos.length) {
-    h += `<div class="m-sec-title">参考视频</div>`;
-    info.videos.forEach(v => {
-      h += `<a href="${v.url}" target="_blank" class="video-link-btn">▶ ${v.label}</a>`;
-    });
-  }
+  if (info.warn) h += `<div class="m-warn-box">⚠️ ${esc(info.warn)}</div>`;
+
+  h += `<div class="link-panel">
+    <div class="link-panel-hdr">
+      <div class="m-sec-title">外部链接</div>
+      <button class="mini-action" onclick="toggleLinkForm()">＋ 添加</button>
+    </div>
+    <div id="link-list">${renderLinkList(exId, links)}</div>
+    <div class="link-form" id="link-form" style="display:none">
+      <input id="link-title" placeholder="标题，例如 小红书示范">
+      <select id="link-platform">
+        <option value="小红书">小红书</option>
+        <option value="YouTube">YouTube</option>
+        <option value="其他">其他</option>
+      </select>
+      <input id="link-url" placeholder="粘贴链接 URL">
+      <button onclick="addExerciseLink('${exId}')">保存链接</button>
+    </div>
+  </div>`;
 
   document.getElementById('ex-modal-body').innerHTML = h;
   openSheet('ex-modal-ov');
+}
+
+function renderLinkList(exId, links) {
+  if (!links.length) return `<div class="link-empty">还没有链接，可以把小红书或 YouTube 教程贴进来。</div>`;
+  const defaultCount = ((EX_INFO[exId] && (EX_INFO[exId].links || EX_INFO[exId].videos)) || []).length;
+  return links.map((v, i) => {
+    const canDelete = i >= defaultCount;
+    const userIdx = i - defaultCount;
+    return `<div class="video-link-row">
+      <a href="${attr(v.url)}" target="_blank" rel="noopener" class="video-link-btn">
+        <span>${esc(v.platform || v.label || '链接')}</span>
+        <strong>${esc(v.title || v.label || v.url)}</strong>
+      </a>
+      ${canDelete ? `<button class="link-del-btn" onclick="deleteExerciseLink('${exId}',${userIdx})">删除</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleLinkForm() {
+  const el = document.getElementById('link-form');
+  if (el) el.style.display = el.style.display === 'none' ? 'grid' : 'none';
+}
+
+function addExerciseLink(exId) {
+  const title = document.getElementById('link-title').value.trim();
+  const platform = document.getElementById('link-platform').value;
+  const url = document.getElementById('link-url').value.trim();
+  if (!url || !/^https?:\/\//i.test(url)) {
+    showToast('请粘贴 http/https 链接');
+    return;
+  }
+  if (!userLinks[exId]) userLinks[exId] = [];
+  userLinks[exId].push({ title: title || platform + '教程', platform, url });
+  saveUserLinks();
+  openExModal(exId);
+  showToast('链接已保存 ✓');
+}
+
+function deleteExerciseLink(exId, idx) {
+  if (!userLinks[exId]) return;
+  userLinks[exId].splice(idx, 1);
+  if (!userLinks[exId].length) delete userLinks[exId];
+  saveUserLinks();
+  openExModal(exId);
+  showToast('链接已删除');
 }
 
 // ── Add Exercise ─────────────────────────────
@@ -481,8 +706,9 @@ function openAddEx(d) {
   const activeIds = new Set();
 
   // 收集今天已有的动作
-  if (day.tmpl && TMPLS[day.tmpl]) {
-    TMPLS[day.tmpl].sections.forEach(sec => sec.exs.forEach(ex => {
+  const t = getTemplate(day.tmpl);
+  if (day.tmpl && t) {
+    t.sections.forEach(sec => sec.exs.forEach(ex => {
       if (!removed.has(ex.id)) activeIds.add(ex.id);
     }));
   }
@@ -498,8 +724,8 @@ function openAddEx(d) {
   } else {
     document.getElementById('add-ex-list').innerHTML = available.map(e =>
       `<div class="add-ex-item" onclick="addExToday('${d}','${e.id}')">
-        <div class="add-ex-name">${e.name}</div>
-        <div class="add-ex-tl">${e.tl}</div>
+        <div class="add-ex-name">${esc(e.name)}</div>
+        <div class="add-ex-tl">${esc(e.tl)}</div>
       </div>`
     ).join('');
   }
@@ -513,6 +739,139 @@ function addExToday(d, exId) {
   saveDays();
   closeSheet('add-ex-ov');
   renderToday();
+}
+
+// ── User Templates ───────────────────────────
+function buildVisibleTemplateForDay(d) {
+  const day = getDay(d);
+  const base = getTemplate(day.tmpl);
+  if (!base) return null;
+  const next = cloneTemplate(base);
+  const removed = new Set(day.removedExs || []);
+  next.sections = next.sections.map(sec => Object.assign({}, sec, {
+    exs: (sec.exs || []).filter(ex => !removed.has(ex.id)),
+  })).filter(sec => sec.exs.length);
+  if ((day.addedExs || []).length) {
+    let main = next.sections.find(sec => sec.module === 'main') || next.sections[0];
+    if (!main) {
+      main = { module: 'main', title: '主训练', dot: next.color || 'gn', exs: [] };
+      next.sections.push(main);
+    }
+    day.addedExs.forEach(exId => {
+      if (EX_INFO[exId] && !main.exs.some(ex => ex.id === exId)) main.exs.push(buildExFromInfo(exId));
+    });
+  }
+  return next;
+}
+
+function saveDayAsTemplate(d) {
+  const day = getDay(d);
+  const baseKey = defaultTemplateKey(day.tmpl) || day.tmpl;
+  const base = buildVisibleTemplateForDay(d);
+  if (!base) return;
+  const id = 'user_' + Date.now();
+  userTemplates[id] = Object.assign(base, {
+    label: '我的' + (base.label || '训练'),
+    sub: (base.sub || '') + ' · 自定义',
+    baseKey,
+  });
+  saveUserTemplates();
+  day.tmpl = id;
+  day.removedExs = [];
+  day.addedExs = [];
+  saveDays();
+  renderToday();
+  showToast('已保存为我的模板 ✓');
+}
+
+function ensureEditableTemplate(d) {
+  const day = getDay(d);
+  if (!day.tmpl || !getTemplate(day.tmpl)) return null;
+  if (userTemplates[day.tmpl]) return day.tmpl;
+  saveDayAsTemplate(d);
+  return getDay(d).tmpl;
+}
+
+function openTemplateEditor(d) {
+  const tmplId = ensureEditableTemplate(d);
+  if (!tmplId) return;
+  _editingTmplId = tmplId;
+  renderTemplateEditor(d);
+  openSheet('tmpl-edit-ov');
+}
+
+function renderTemplateEditor(d) {
+  const t = userTemplates[_editingTmplId];
+  if (!t) return;
+  let html = `<div class="tmpl-edit-note">正在编辑：${esc(t.label)}。默认模板不会被覆盖。</div>`;
+  (t.sections || []).forEach((sec, si) => {
+    html += `<div class="te-sec">
+      <div class="te-sec-title">${esc(moduleLabel(sec))}<span>${esc(sec.title || '')}</span></div>`;
+    (sec.exs || []).forEach((ex, ei) => {
+      const info = EX_INFO[ex.id] || { name: ex.id, tl: '' };
+      html += `<div class="te-row">
+        <div><div class="te-name">${esc(info.name)}</div><div class="te-meta">${esc(info.tl)}</div></div>
+        <div class="te-actions">
+          <button onclick="moveTemplateEx(${si},${ei},-1,'${d}')">↑</button>
+          <button onclick="moveTemplateEx(${si},${ei},1,'${d}')">↓</button>
+          <button onclick="removeTemplateEx(${si},${ei},'${d}')">删</button>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  html += `<div class="te-add">
+    <select id="te-module">${(t.sections || []).map((sec, i) => `<option value="${i}">${esc(moduleLabel(sec))}</option>`).join('')}</select>
+    <select id="te-ex">${Object.entries(EX_INFO).map(([id, info]) => `<option value="${id}">${esc(info.name)}</option>`).join('')}</select>
+    <button onclick="addTemplateEx('${d}')">添加到模板</button>
+  </div>
+  <button class="cs-save-btn" onclick="finishTemplateEdit('${d}')">完成编辑 ✓</button>`;
+  document.getElementById('tmpl-edit-body').innerHTML = html;
+}
+
+function moveTemplateEx(secIdx, exIdx, dir, d) {
+  const sec = userTemplates[_editingTmplId].sections[secIdx];
+  const to = exIdx + dir;
+  if (!sec || to < 0 || to >= sec.exs.length) return;
+  const [item] = sec.exs.splice(exIdx, 1);
+  sec.exs.splice(to, 0, item);
+  saveUserTemplates();
+  renderTemplateEditor(d);
+}
+
+function removeTemplateEx(secIdx, exIdx, d) {
+  const sec = userTemplates[_editingTmplId].sections[secIdx];
+  if (!sec) return;
+  sec.exs.splice(exIdx, 1);
+  saveUserTemplates();
+  renderTemplateEditor(d);
+}
+
+function addTemplateEx(d) {
+  const secIdx = +document.getElementById('te-module').value;
+  const exId = document.getElementById('te-ex').value;
+  const sec = userTemplates[_editingTmplId].sections[secIdx];
+  if (!sec || !EX_INFO[exId]) return;
+  sec.exs.push(buildExFromInfo(exId));
+  saveUserTemplates();
+  renderTemplateEditor(d);
+}
+
+function finishTemplateEdit(d) {
+  closeSheet('tmpl-edit-ov');
+  renderToday(d);
+  showToast('模板已更新 ✓');
+}
+
+function restoreDefaultTemplate(d) {
+  const day = getDay(d);
+  const fallback = defaultTemplateKey(day.tmpl) || (SCHEDULE.find(x => x.d === d) || {}).rec || null;
+  day.tmpl = fallback;
+  day.removedExs = [];
+  day.addedExs = [];
+  saveDays();
+  renderToday(d);
+  showToast('已恢复默认模板');
 }
 
 // ── Diet Tab ──────────────────────────────────
@@ -678,11 +1037,13 @@ function renderCal() {
       const d    = item.d;
       const done = isDayDone(d);
       const tmpl = (days[d] && days[d].tmpl) || item.rec;
-      let cls = ['dc', d === today ? 'today' : '', done ? 'done-day' : '', tmpl && TMPLS[tmpl] ? 't'+tmpl : ''].filter(Boolean).join(' ');
+      const t = getTemplate(tmpl);
+      const baseKey = defaultTemplateKey(tmpl) || tmpl;
+      let cls = ['dc', d === today ? 'today' : '', done ? 'done-day' : '', t ? 't'+baseKey : ''].filter(Boolean).join(' ');
       const [, , dy] = d.split('-');
       html += `<div class="${cls}" onclick="goToDay('${d}')">
         <div class="dc-num">${+dy}</div>
-        ${tmpl && TMPLS[tmpl] ? `<div class="dc-badge">${TMPLS[tmpl].icon}</div>` : '<div class="dc-label">休</div>'}
+        ${t ? `<div class="dc-badge">${t.icon}</div>` : '<div class="dc-label">休</div>'}
         ${done ? `<span class="dc-done">✅</span>` : ''}
       </div>`;
     });
@@ -707,15 +1068,23 @@ function renderProgress() {
   const done        = SCHEDULE.filter(x => isDayDone(x.d)).length;
   const rate        = total ? Math.round(done / total * 100) : 0;
   const lastCheckin = checkins.length ? checkins[checkins.length - 1] : null;
+  const lastTraining = lastDoneTraining();
+  const cardio = cardioStats();
+  const moduleStats = moduleCompletionStats();
+  const links = linkStats();
+  const lastPain = latestPhaseNote();
+  const lastSport = latestSport();
+  const nextEvalDays = Math.max(0, dateDiffDays(PHASE.testEndDate || PHASE.endDate, todayStr()));
 
   // 热图
   const heatHtml = SCHEDULE.map(item => {
     const d    = item.d;
     const done = isDayDone(d);
     const tmpl = done ? ((days[d] && days[d].tmpl) || item.rec) : null;
+    const t = getTemplate(tmpl);
     const [, , dy] = d.split('-');
     let cls = 'hm-day ';
-    if (done && tmpl && TMPLS[tmpl]) cls += 'done-' + TMPLS[tmpl].color;
+    if (done && t) cls += 'done-' + t.color;
     else if (item.rec) cls += 'planned';
     else cls += 'rest';
     return `<div class="${cls}" title="${fmtDate(d)}">
@@ -725,6 +1094,18 @@ function renderProgress() {
   }).join('');
 
   let html = `<div class="prog-wrap">
+    <div class="data-hero">
+      <div>
+        <div class="data-kicker">Phase ${PHASE.num} 数据中心</div>
+        <div class="data-title">${esc(PHASE.label)}</div>
+        <div class="data-sub">${esc(PHASE.focus || '训练、饮食、身体状态统一记录')} · ${phaseWindowLabel()}</div>
+      </div>
+      <div class="data-date">
+        <span>${fmtDate(PHASE.testEndDate || PHASE.endDate)}</span>
+        <small>下次评估</small>
+      </div>
+    </div>
+
     <div class="prog-summary">
       <div class="ps-item"><span class="ps-v">${done}/${total}</span><span class="ps-l">完成</span></div>
       <div class="ps-item"><span class="ps-v">${rate}%</span><span class="ps-l">完成率</span></div>
@@ -732,17 +1113,49 @@ function renderProgress() {
       <div class="ps-item"><span class="ps-v">${lastCheckin ? lastCheckin.bf || '—' : '—'}</span><span class="ps-l">体脂%</span></div>
     </div>
 
+    <div class="goal-card">
+      <div class="section-head">
+        <div>
+          <div class="hm-title">目标与计划</div>
+          <div class="muted-line">可衡量指标优先，力量外观目标暂不作为核心 KPI。</div>
+        </div>
+        <button class="mini-action" onclick="resetGoals()">恢复默认</button>
+      </div>
+      <div class="goal-list">
+        ${goals.map((g, i) => `<div class="goal-row">
+          <div class="goal-name">${esc(g.name)}</div>
+          <div class="goal-target">${esc(g.target)}</div>
+          <div class="goal-metric">${esc(g.metric)} · ${esc(g.cadence || '')}</div>
+          <button onclick="editGoal(${i})">编辑</button>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric-card"><span>${lastTraining ? `${fmtDate(lastTraining.date)} ${esc(lastTraining.label)}` : '—'}</span><small>最近训练</small></div>
+      <div class="metric-card"><span>${cardio.minutes || 0} 分钟</span><small>Zone 2 / 有氧记录</small></div>
+      <div class="metric-card"><span>${cardio.avgHr ? cardio.avgHr + ' bpm' : '—'}</span><small>平均有氧心率</small></div>
+      <div class="metric-card"><span>${moduleStats.core}% / ${moduleStats.stretch}%</span><small>核心 / 拉伸完成率</small></div>
+      <div class="metric-card"><span>${lastPain ? painSummary(lastPain) : '—'}</span><small>疼痛维护</small></div>
+      <div class="metric-card"><span>${lastSport ? `${fmtDate(lastSport.date)} ${esc(lastSport.type)}` : '—'}</span><small>最近其他运动</small></div>
+    </div>
+
     <div class="hm-card">
       <div class="hm-title">训练完成情况</div>
       <div class="hm-legend">
-        <span class="hm-legend-dot hm-gn"></span>L类
-        <span class="hm-legend-dot hm-bl"></span>U类
+        <span class="hm-legend-dot hm-gn"></span>L有氧
+        <span class="hm-legend-dot hm-bl"></span>B背
+        <span class="hm-legend-dot hm-rd"></span>C胸
+        <span class="hm-legend-dot hm-am"></span>S肩
         <span class="hm-legend-dot hm-br"></span>AR
         <span class="hm-legend-dot hm-planned"></span>未完成
         <span class="hm-legend-dot hm-rest"></span>休息
       </div>
       <div class="hm-grid">${heatHtml}</div>
     </div>
+
+    ${renderPhaseNoteCard(nextEvalDays)}
+    ${renderSportPerfCard()}
 
     <div class="checkin-card">
       <div class="cc-title">📝 体重打卡</div>
@@ -756,6 +1169,10 @@ function renderProgress() {
       <button class="btn-save" onclick="saveCheckinData()">保存打卡</button>
     </div>
 
+    ${renderPostureAssessment()}
+
+    ${renderBackupCard(links)}
+
     <div class="history-card">
       <div class="history-hdr">📈 历史记录</div>
       ${renderCheckinHistory()}
@@ -763,6 +1180,278 @@ function renderProgress() {
   </div>`;
 
   document.getElementById('progress-content').innerHTML = html;
+}
+
+function renderPostureAssessment() {
+  const p = postureData || {};
+  const last = p.date ? `上次评估：${fmtDate(p.date)}` : '还没有记录';
+  return `<div class="posture-card">
+    <div class="posture-hdr">
+      <div>
+        <div class="cc-title">体态评估</div>
+        <div class="posture-sub">${esc(last)} · 用于调整训练，不替代医疗诊断</div>
+      </div>
+      <button class="mini-action" onclick="savePostureData()">保存</button>
+    </div>
+    <div class="posture-grid">
+      <label>肩/圆肩<input id="pa-shoulder" value="${attr(p.shoulder || '')}" placeholder="例：右肩卡顿、圆肩轻微"></label>
+      <label>骨盆/髋<input id="pa-hip" value="${attr(p.hip || '')}" placeholder="例：左髋紧、久坐后酸"></label>
+      <label>膝/下肢<input id="pa-knee" value="${attr(p.knee || '')}" placeholder="例：右膝内侧屈膝酸"></label>
+      <label>右肘/前臂<input id="pa-elbow" value="${attr(p.elbow || '')}" placeholder="例：推胸时右肘发紧"></label>
+    </div>
+    <textarea id="pa-notes" class="cc-notes posture-notes" placeholder="照片观察、站姿、左右差异、训练中发现的问题...">${esc(p.notes || '')}</textarea>
+    <div class="posture-actions">
+      <span>建议动作：腕伸/屈肌拉伸、前臂旋前旋后、90/90髋转换、终末伸膝。</span>
+    </div>
+  </div>`;
+}
+
+function painSummary(note) {
+  if (!note || !note.pain) return '—';
+  const p = note.pain;
+  return `腰${p.lumbar || '—'} 肩${p.shoulder || '—'} 膝${p.knee || '—'} 肘${p.elbow || '—'}`;
+}
+
+function renderPhaseNoteCard(nextEvalDays) {
+  const last = latestPhaseNote();
+  return `<div class="phase-card">
+    <div class="section-head">
+      <div>
+        <div class="hm-title">疼痛维护与阶段反馈</div>
+        <div class="muted-line">距离 7月15日测试评估还有 ${nextEvalDays} 天；这里记录训练后或每周的关节状态。</div>
+      </div>
+    </div>
+    <div class="pain-grid">
+      <label>日期<input type="date" id="pn-date" value="${todayStr()}"></label>
+      <label>腰髋<input type="number" min="1" max="10" id="pn-lumbar" placeholder="1-10"></label>
+      <label>右肩<input type="number" min="1" max="10" id="pn-shoulder" placeholder="1-10"></label>
+      <label>右膝<input type="number" min="1" max="10" id="pn-knee" placeholder="1-10"></label>
+      <label>右肘<input type="number" min="1" max="10" id="pn-elbow" placeholder="1-10"></label>
+    </div>
+    <textarea id="pn-note" class="cc-notes" placeholder="触发动作、疼痛变化、需要降级的动作、恢复感..."></textarea>
+    <button class="btn-save" onclick="savePhaseNote()">保存维护记录</button>
+    <div class="mini-history">${last ? `上次：${fmtDate(last.date)} · ${painSummary(last)} · ${esc(last.note || '无备注')}` : '还没有阶段维护记录'}</div>
+  </div>`;
+}
+
+function savePhaseNote() {
+  const d = document.getElementById('pn-date').value || todayStr();
+  const entry = {
+    date: d,
+    pain: {
+      lumbar: document.getElementById('pn-lumbar').value,
+      shoulder: document.getElementById('pn-shoulder').value,
+      knee: document.getElementById('pn-knee').value,
+      elbow: document.getElementById('pn-elbow').value,
+    },
+    note: document.getElementById('pn-note').value.trim(),
+  };
+  phaseNotes.push(entry);
+  savePhaseNotes();
+  renderProgress();
+  showToast('阶段维护记录已保存 ✓');
+}
+
+function renderSportPerfCard() {
+  const last = latestSport();
+  return `<div class="sport-card">
+    <div class="section-head">
+      <div>
+        <div class="hm-title">其他运动表现</div>
+        <div class="muted-line">徒步、游泳、羽毛球、骑行先记录基线，9月后纳入正式评估。</div>
+      </div>
+    </div>
+    <div class="sport-grid">
+      <label>日期<input type="date" id="sp-date" value="${todayStr()}"></label>
+      <label>类型<select id="sp-type">
+        <option value="徒步">徒步</option>
+        <option value="游泳">游泳</option>
+        <option value="羽毛球">羽毛球</option>
+        <option value="骑行">骑行</option>
+        <option value="其他">其他</option>
+      </select></label>
+      <label>时长<input type="number" id="sp-dur" placeholder="分钟"></label>
+      <label>距离<input type="number" step="0.1" id="sp-dist" placeholder="km"></label>
+      <label>均心率<input type="number" id="sp-hr" placeholder="bpm"></label>
+      <label>疲劳<input type="number" min="1" max="10" id="sp-fatigue" placeholder="1-10"></label>
+    </div>
+    <textarea id="sp-note" class="cc-notes" placeholder="表现、疼痛、第二天恢复、装备或场地备注..."></textarea>
+    <button class="btn-save" onclick="saveSportPerfData()">保存运动表现</button>
+    <div class="mini-history">${last ? `上次：${fmtDate(last.date)} · ${esc(last.type)} · ${last.duration || '—'}分钟 · 疲劳${last.fatigue || '—'}` : '还没有其他运动记录'}</div>
+  </div>`;
+}
+
+function saveSportPerfData() {
+  const entry = {
+    date: document.getElementById('sp-date').value || todayStr(),
+    type: document.getElementById('sp-type').value,
+    duration: document.getElementById('sp-dur').value,
+    distance: document.getElementById('sp-dist').value,
+    avgHr: document.getElementById('sp-hr').value,
+    fatigue: document.getElementById('sp-fatigue').value,
+    note: document.getElementById('sp-note').value.trim(),
+  };
+  sportPerf.push(entry);
+  saveSportPerf();
+  renderProgress();
+  showToast('运动表现已保存 ✓');
+}
+
+function editGoal(idx) {
+  const g = goals[idx];
+  if (!g) return;
+  const target = prompt('目标描述', g.target || '');
+  if (target === null) return;
+  const metric = prompt('衡量指标', g.metric || '');
+  if (metric === null) return;
+  goals[idx] = Object.assign({}, g, { target: target.trim(), metric: metric.trim() });
+  saveGoals();
+  renderProgress();
+  showToast('目标已更新 ✓');
+}
+
+function resetGoals() {
+  goals = defaultGoals();
+  saveGoals();
+  renderProgress();
+  showToast('已恢复默认目标');
+}
+
+function renderBackupCard(links) {
+  const payload = buildBackupPayload();
+  const itemCount = Object.keys(payload.data).length;
+  return `<div class="backup-card">
+    <div class="section-head">
+      <div>
+        <div class="hm-title">发布更新与数据备份</div>
+        <div class="muted-line">版本 ${esc(appVersion())} · 固定网址同步功能和模板；个人记录仍按设备本地保存。</div>
+      </div>
+    </div>
+    <div class="backup-stats">
+      <span>${itemCount} 类数据</span>
+      <span>${links.linked}/${links.total} 个动作有链接</span>
+      <span>${links.userAdded} 条自定义链接</span>
+    </div>
+    <div class="sync-note">
+      <strong>同步边界</strong>
+      <span>代码、模板、动作库：发布到同一网址后，电脑和手机刷新即可更新。</span>
+      <span>训练记录、饮食、外部链接、我的模板：暂存在本机浏览器，跨设备请导出/导入 JSON。</span>
+    </div>
+    <div class="backup-actions">
+      <button onclick="checkAppUpdate()">检查更新</button>
+      <button id="reload-update-btn" class="hidden" onclick="applyAppUpdate()">重新加载新版</button>
+      <button onclick="exportBackup()">导出备份</button>
+      <button onclick="document.getElementById('backup-file').click()">导入备份</button>
+      <input id="backup-file" type="file" accept="application/json,.json" style="display:none" onchange="importBackup(this.files && this.files[0])">
+    </div>
+  </div>`;
+}
+
+function appVersion() {
+  return typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'local';
+}
+
+window.onAppUpdateReady = function(worker) {
+  _pendingUpdateWorker = worker;
+  const btn = document.getElementById('reload-update-btn');
+  if (btn) btn.classList.remove('hidden');
+  showToast('新版已准备好');
+};
+
+function checkAppUpdate() {
+  if (!navigator.serviceWorker || !window.ftcSwReg) {
+    showToast('当前浏览器没有启用更新服务');
+    return;
+  }
+  window.ftcSwReg.update().then(() => {
+    if (_pendingUpdateWorker) {
+      const btn = document.getElementById('reload-update-btn');
+      if (btn) btn.classList.remove('hidden');
+      showToast('发现新版，可重新加载');
+    } else {
+      showToast('已检查更新');
+    }
+  }).catch(() => showToast('检查更新失败'));
+}
+
+function applyAppUpdate() {
+  if (_pendingUpdateWorker) {
+    _pendingUpdateWorker.postMessage({ type: 'SKIP_WAITING' });
+  } else {
+    window.location.reload();
+  }
+}
+
+function buildBackupPayload() {
+  return {
+    app: 'fitness_app',
+    version: 1,
+    appVersion: appVersion(),
+    exportedAt: new Date().toISOString(),
+    phase: PHASE,
+    data: {
+      [DAYS_KEY]: days,
+      [DEFAULTS_KEY]: defaults,
+      [CHECKINS_KEY]: checkins,
+      [DIET_KEY]: dietData,
+      [USER_LINKS_KEY]: userLinks,
+      [USER_TEMPLATES_KEY]: userTemplates,
+      [POSTURE_KEY]: postureData,
+      [GOALS_KEY]: goals,
+      [PHASE_NOTES_KEY]: phaseNotes,
+      [SPORT_PERF_KEY]: sportPerf,
+    },
+  };
+}
+
+function exportBackup() {
+  const payload = buildBackupPayload();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fitness-backup-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('备份已导出');
+}
+
+function importBackup(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result);
+      const data = payload.data || payload;
+      const keys = [DAYS_KEY, DEFAULTS_KEY, CHECKINS_KEY, DIET_KEY, USER_LINKS_KEY, USER_TEMPLATES_KEY, POSTURE_KEY, GOALS_KEY, PHASE_NOTES_KEY, SPORT_PERF_KEY];
+      keys.forEach(k => {
+        if (data[k] !== undefined) localStorage.setItem(k, JSON.stringify(data[k]));
+      });
+      loadAll();
+      renderHeader();
+      renderProgress();
+      showToast('备份已导入 ✓');
+    } catch (e) {
+      showToast('导入失败：JSON 无法读取');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function savePostureData() {
+  postureData = {
+    date: todayStr(),
+    shoulder: document.getElementById('pa-shoulder').value.trim(),
+    hip: document.getElementById('pa-hip').value.trim(),
+    knee: document.getElementById('pa-knee').value.trim(),
+    elbow: document.getElementById('pa-elbow').value.trim(),
+    notes: document.getElementById('pa-notes').value.trim(),
+  };
+  savePosture();
+  renderProgress();
+  showToast('体态评估已保存 ✓');
 }
 
 function renderCheckinHistory() {
@@ -798,7 +1487,7 @@ function openSheet(id)  { document.getElementById(id).classList.add('open'); }
 function closeSheet(id) { document.getElementById(id).classList.remove('open'); }
 
 // 点击蒙层关闭
-['ex-modal-ov', 'complete-ov', 'tmpl-ov', 'add-ex-ov'].forEach(id => {
+['ex-modal-ov', 'complete-ov', 'tmpl-ov', 'add-ex-ov', 'tmpl-edit-ov'].forEach(id => {
   document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('click', e => { if (e.target === el) closeSheet(id); });

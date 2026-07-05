@@ -27,7 +27,7 @@
   <button class="tab active" data-tab="today">今日</button>
   <button class="tab" data-tab="cal">日历</button>
   <button class="tab" data-tab="diet">饮食</button>
-  <button class="tab" data-tab="progress">进度</button>
+  <button class="tab" data-tab="progress">数据</button>
 </nav>
 
 <main id="tab-today" class="tab-pane active">
@@ -88,10 +88,43 @@
   </div>
 </div>
 
+<!-- 编辑模板 -->
+<div class="sheet-ov" id="tmpl-edit-ov">
+  <div class="sheet sheet-tall" id="tmpl-edit-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hdr">
+      <div class="sheet-title">编辑训练模板</div>
+      <button class="sheet-close-sm" onclick="closeSheet('tmpl-edit-ov')">×</button>
+    </div>
+    <div id="tmpl-edit-body"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
+<script src="version.js"></script>
 <script src="data.js"></script>
 <script src="app.js"></script>
-<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    window.ftcSwReg = reg;
+    reg.addEventListener('updatefound', () => {
+      const worker = reg.installing;
+      if (!worker) return;
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller && window.onAppUpdateReady) {
+          window.onAppUpdateReady(worker);
+        }
+      });
+    });
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (window.ftcRefreshing) return;
+    window.ftcRefreshing = true;
+    window.location.reload();
+  });
+}
+</script>
 </body>
 </html>

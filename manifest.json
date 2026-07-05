@@ -1,8 +1,9 @@
 {
   "name": "Tim 健身",
   "short_name": "健身",
-  "description": "Phase 1 · 康复期训练记录",
-  "start_url": ".",
+  "description": "Phase 1 · 数据中心与训练记录",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f2f8f3",
   "theme_color": "#1b4332",
