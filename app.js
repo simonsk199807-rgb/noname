@@ -243,7 +243,6 @@ function initTabs() {
       if (btn.dataset.tab === 'today')    { _viewDate = null; renderToday(); }
       if (btn.dataset.tab === 'cal')      renderCal();
       if (btn.dataset.tab === 'diet')     { _dietDate = _dietDate || todayStr(); renderDiet(); }
-      if (btn.dataset.tab === 'progress') renderProgress();
     });
   });
 }
