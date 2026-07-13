@@ -250,7 +250,7 @@ function renderToday(d) {
   const sched   = SCHEDULE.find(x => x.d === target);
   const day     = getDay(target);
 
-  // 自动应用 Jeff 推荐模板（只在用户还没选的时候）
+  // 自动应用推荐模板（只在用户还没选的时候）
   if (!day.tmpl && sched && sched.rec) {
     day.tmpl = sched.rec;
     saveDays();
@@ -271,7 +271,7 @@ function renderToday(d) {
   if (tmpl && tmplObj) {
     const t = tmplObj;
     html += `<span class="tmpl-badge bg-${t.color}">${t.icon} ${esc(t.label)}</span>`;
-    if (sched && sched.rec === tmpl) html += `<span class="jeff-rec">⚡ Jeff 推荐</span>`;
+    if (sched && sched.rec === tmpl) html += `<span class="jeff-rec">推荐模板</span>`;
     if (userTemplates[tmpl]) html += `<span class="user-tmpl-chip">我的模板</span>`;
   } else {
     html += `<span style="font-size:14px;color:var(--mu);font-weight:700;">自由日</span>`;
@@ -289,11 +289,14 @@ function renderToday(d) {
     html += `<div class="module-summary">
       ${(t.sections || []).map(sec => `<span>${esc(moduleLabel(sec))}</span>`).join('')}
     </div>`;
-    html += `<div class="today-tools">
-      <button onclick="saveDayAsTemplate('${target}')">保存为我的模板</button>
-      <button onclick="openTemplateEditor('${target}')">编辑模板动作</button>
-      <button onclick="restoreDefaultTemplate('${target}')">恢复默认</button>
-    </div>`;
+    html += `<details class="today-maintenance">
+      <summary>模板维护</summary>
+      <div class="today-tools">
+        <button onclick="saveDayAsTemplate('${target}')">保存为我的模板</button>
+        <button onclick="openTemplateEditor('${target}')">编辑模板动作</button>
+        <button onclick="restoreDefaultTemplate('${target}')">恢复默认</button>
+      </div>
+    </details>`;
     html += `<div class="today-progress-line"><span>${visibleCount} 个动作</span><span>模块固定 · 当天可调整</span></div>`;
 
     // 警告条
@@ -932,7 +935,7 @@ function renderDiet() {
         </div>
       </div>
 
-      <div class="diet-ai-tip">💡 拍照记录食物 → 截图发给 Jeff 进行营养分析</div>`;
+      <div class="diet-ai-tip">💡 拍照记录食物：本轮先保留文字与热量记录，照片入口后续单独做。</div>`;
 
   // 餐次卡片
   MEALS.forEach(meal => {
@@ -1096,9 +1099,9 @@ function renderProgress() {
   let html = `<div class="prog-wrap">
     <div class="data-hero">
       <div>
-        <div class="data-kicker">Phase ${PHASE.num} 数据中心</div>
+        <div class="data-kicker">Phase ${PHASE.num} 数据底座</div>
         <div class="data-title">${esc(PHASE.label)}</div>
-        <div class="data-sub">${esc(PHASE.focus || '训练、饮食、身体状态统一记录')} · ${phaseWindowLabel()}</div>
+        <div class="data-sub">${esc(PHASE.focus || '训练、饮食、身体状态统一记录')} · 周复盘在 Codex 对话中完成</div>
       </div>
       <div class="data-date">
         <span>${fmtDate(PHASE.testEndDate || PHASE.endDate)}</span>
@@ -1172,6 +1175,7 @@ function renderProgress() {
     ${renderPostureAssessment()}
 
     ${renderBackupCard(links)}
+
 
     <div class="history-card">
       <div class="history-hdr">📈 历史记录</div>
