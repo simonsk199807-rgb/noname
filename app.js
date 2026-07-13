@@ -26,6 +26,8 @@ let _viewDate = null;  // null = 今日，string = 历史某天
 let _dietDate = null;  // 饮食 tab 当前日期
 let _editingTmplId = null;
 let _pendingUpdateWorker = null;
+const PRIMARY_TEMPLATE_KEYS = ['B', 'C', 'S', 'A'];
+const LEGACY_TEMPLATE_KEYS = { L: 'A', AR: 'A' };
 
 function loadAll() {
   try { days     = JSON.parse(localStorage.getItem(DAYS_KEY)     || '{}'); } catch { days = {}; }
@@ -87,13 +89,15 @@ function wdayIdx(ds) {
 }
 function isDayDone(d) { return !!(days[d] && days[d].done); }
 function allTemplates() { return Object.assign({}, TMPLS, userTemplates); }
-function getTemplate(id) { return allTemplates()[id]; }
+function canonicalTemplateKey(id) { return LEGACY_TEMPLATE_KEYS[id] || id; }
+function getTemplate(id) { return allTemplates()[canonicalTemplateKey(id)]; }
 function defaultGoals() {
   return (typeof DEFAULT_GOALS !== 'undefined' ? DEFAULT_GOALS : []).map(g => Object.assign({}, g));
 }
 function defaultTemplateKey(id) {
   const t = userTemplates[id];
-  return t && t.baseKey && TMPLS[t.baseKey] ? t.baseKey : (TMPLS[id] ? id : null);
+  const key = canonicalTemplateKey(id);
+  return t && t.baseKey && TMPLS[t.baseKey] ? t.baseKey : (TMPLS[key] ? key : null);
 }
 function moduleLabel(sec) {
   return (typeof MODULE_LABELS !== 'undefined' && sec.module && MODULE_LABELS[sec.module]) ? MODULE_LABELS[sec.module] : (sec.title || '模块');
@@ -192,7 +196,10 @@ function latestSport() {
 function migrateOldTemplates() {
   let changed = false;
   Object.entries(days).forEach(([d, day]) => {
-    if (day && day.tmpl === 'U') {
+    if (day && LEGACY_TEMPLATE_KEYS[day.tmpl]) {
+      day.tmpl = LEGACY_TEMPLATE_KEYS[day.tmpl];
+      changed = true;
+    } else if (day && day.tmpl === 'U') {
       const sched = SCHEDULE.find(x => x.d === d);
       if (sched && sched.rec) {
         day.tmpl = sched.rec;
@@ -414,10 +421,14 @@ function restoreAllExs(d) {
 function openTmplPicker(d) {
   const day = getDay(d);
   let html = `<div class="tmpl-options">`;
-  Object.entries(allTemplates()).forEach(([k, t]) => {
+  const templates = [
+    ...PRIMARY_TEMPLATE_KEYS.map(k => [k, TMPLS[k]]),
+    ...Object.entries(userTemplates),
+  ];
+  templates.forEach(([k, t]) => {
     const isCurr = day.tmpl === k;
     html += `<button class="tmpl-opt-btn${isCurr ? ' active-' + t.color : ''}" onclick="selectTmpl('${d}','${k}')">
-      <span class="to-icon">${t.icon}</span>
+      <span class="to-icon">${esc(t.short || t.icon)}</span>
       <div class="to-text">
         <div class="to-label">${esc(t.label)}${userTemplates[k] ? '<span class="mini-chip">我的</span>' : ''}</div>
         <div class="to-sub">${esc(t.sub || '')}</div>
@@ -428,6 +439,11 @@ function openTmplPicker(d) {
   html += `</div>`;
   document.getElementById('tmpl-pick-body').innerHTML = html;
   openSheet('tmpl-ov');
+}
+
+function calendarLabelForTemplate(tmpl) {
+  const t = getTemplate(tmpl);
+  return t ? (t.calendarLabel || t.label) : '休息';
 }
 
 function selectTmpl(d, tmpl) {
@@ -1046,7 +1062,7 @@ function renderCal() {
       const [, , dy] = d.split('-');
       html += `<div class="${cls}" onclick="goToDay('${d}')">
         <div class="dc-num">${+dy}</div>
-        ${t ? `<div class="dc-badge">${t.icon}</div>` : '<div class="dc-label">休</div>'}
+        <div class="dc-module">${esc(calendarLabelForTemplate(tmpl))}</div>
         ${done ? `<span class="dc-done">✅</span>` : ''}
       </div>`;
     });

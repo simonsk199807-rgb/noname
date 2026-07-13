@@ -771,16 +771,16 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
   transition: box-shadow .15s;
 }
 .dc::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--bdr2); }
-.dc.tL::before  { background: var(--gn); }
+.dc.tA::before  { background: var(--gn); }
 .dc.tB::before  { background: var(--bl); }
 .dc.tC::before  { background: var(--rd); }
 .dc.tS::before  { background: var(--am); }
-.dc.tAR::before { background: var(--br); }
 .dc.today { border-color: var(--gn); border-width: 2px; }
 .dc.done-day { background: var(--gnl); }
 .dc.empty { background: transparent; border-color: transparent; cursor: default; pointer-events: none; }
 .dc-num { font-size: 14px; font-weight: 800; }
 .dc-badge { font-size: 14px; margin-top: 4px; }
+.dc-module { font-size: 10px; font-weight: 800; color: var(--tx2); margin-top: 6px; line-height: 1.1; }
 .dc-done { font-size: 12px; position: absolute; bottom: 5px; right: 5px; }
 .dc-label { font-size: 9px; font-weight: 700; color: var(--mu); margin-top: 2px; }
 
@@ -1565,6 +1565,25 @@ button:active { transform: scale(.98); }
 }
 .dc.done-day { background: #f9f9fb; }
 .dc-done { color: var(--gn); }
+
+.tmpl-opt-btn .to-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: #f2f2f7;
+  color: var(--tx);
+  font-size: 15px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+.tmpl-opt-btn.active-bl .to-icon { background: var(--bll); color: var(--bl); }
+.tmpl-opt-btn.active-rd .to-icon { background: var(--rdl); color: var(--rd); }
+.tmpl-opt-btn.active-am .to-icon { background: var(--aml); color: #bb7100; }
+.tmpl-opt-btn.active-gn .to-icon { background: var(--gnl); color: var(--gn); }
 
 .diet-nav {
   background: rgba(255,255,255,.9);

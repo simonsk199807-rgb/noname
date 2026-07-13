@@ -12,30 +12,30 @@ const PHASE = {
 };
 
 const SCHEDULE = [
-  { d: "2026-06-22", rec: "L" },
+  { d: "2026-06-22", rec: "A" },
   { d: "2026-06-23", rec: null },
   { d: "2026-06-24", rec: "B" },   // 背部（原 U）
   { d: "2026-06-25", rec: null },
-  { d: "2026-06-26", rec: "L" },
-  { d: "2026-06-27", rec: "AR" },
+  { d: "2026-06-26", rec: "A" },
+  { d: "2026-06-27", rec: "A" },
   { d: "2026-06-28", rec: null },
   { d: "2026-06-29", rec: "C" },   // 胸部
   { d: "2026-06-30", rec: null },
-  { d: "2026-07-01", rec: "L" },
+  { d: "2026-07-01", rec: "A" },
   { d: "2026-07-02", rec: null },
   { d: "2026-07-03", rec: "S" },   // 肩部
-  { d: "2026-07-04", rec: "AR" },
+  { d: "2026-07-04", rec: "A" },
   { d: "2026-07-05", rec: null },
-  { d: "2026-07-06", rec: "L" },
+  { d: "2026-07-06", rec: "A" },
   { d: "2026-07-07", rec: "B" },   // 背部（第二轮）
-  { d: "2026-07-08", rec: "L" },
+  { d: "2026-07-08", rec: "A" },
   { d: "2026-07-09", rec: null },
   { d: "2026-07-10", rec: "C" },
-  { d: "2026-07-11", rec: "AR" },
+  { d: "2026-07-11", rec: "A" },
   { d: "2026-07-12", rec: null },
-  { d: "2026-07-13", rec: "L" },
+  { d: "2026-07-13", rec: "A" },
   { d: "2026-07-14", rec: "S" },
-  { d: "2026-07-15", rec: "L" },
+  { d: "2026-07-15", rec: "A" },
 ];
 
 const DEFAULT_GOALS = [
@@ -56,9 +56,9 @@ const MODULE_LABELS = {
 
 // 训练模板
 const TMPLS = {
-  // ── L 类：腰椎激活 + Zone 2 有氧 ──────────────────
-  L: {
-    label: "L 类", sub: "腰椎 + Zone 2", icon: "🌿", color: "gn",
+  // ── 有氧：Zone 2 + 关节维护 ────────────────────────
+  A: {
+    label: "有氧", sub: "Zone 2 + 关节维护", icon: "有氧", short: "氧", calendarLabel: "有氧", color: "gn",
     warn: "任何腰部不适 → 立即停止，切换为步行",
     sections: [
       { module: "warmup", title: "腰椎激活热身", dot: "gn", exs: [
@@ -80,9 +80,9 @@ const TMPLS = {
     ],
   },
 
-  // ── B 类：背部力量 ──────────────────────────────────
+  // ── 背部：中背厚度优先 ──────────────────────────────
   B: {
-    label: "B 类", sub: "背部厚度", icon: "🔵", color: "bl",
+    label: "背部", sub: "中背厚度", icon: "背部", short: "背", calendarLabel: "背部", color: "bl",
     warn: "背厚度优先：划船类动作不借腰；杠铃划船当天腰髋不适即改坐姿划船",
     sections: [
       { module: "warmup", title: "背部热身", dot: "bl", exs: [
@@ -109,9 +109,9 @@ const TMPLS = {
     ],
   },
 
-  // ── C 类：胸部力量 ──────────────────────────────────
+  // ── 胸部：推力训练 ──────────────────────────────────
   C: {
-    label: "C 类", sub: "胸部力量", icon: "🔴", color: "rd",
+    label: "胸部", sub: "胸部推力", icon: "胸部", short: "胸", calendarLabel: "胸部", color: "rd",
     warn: "全程中立握（掌心相对），保护右肘；杠铃卧推本阶段禁止",
     sections: [
       { module: "warmup", title: "胸部热身", dot: "rd", exs: [
@@ -138,9 +138,9 @@ const TMPLS = {
     ],
   },
 
-  // ── S 类：肩部训练 ──────────────────────────────────
+  // ── 肩部：稳定与塑形 ────────────────────────────────
   S: {
-    label: "S 类", sub: "肩部训练", icon: "🟠", color: "am",
+    label: "肩部", sub: "稳定与塑形", icon: "肩部", short: "肩", calendarLabel: "肩部", color: "am",
     warn: "Phase 1 不做推举（右肩 + 腰椎）；右肩不适立即降重或停止",
     sections: [
       { module: "warmup", title: "肩部热身（充分）", dot: "am", exs: [
@@ -167,21 +167,6 @@ const TMPLS = {
     ],
   },
 
-  // ── AR 类：主动恢复 ─────────────────────────────────
-  AR: {
-    label: "主动恢复", sub: "轻松活动", icon: "🚶", color: "br",
-    warn: null,
-    sections: [
-      { module: "cardio", title: "活动内容", dot: "br", exs: [
-        { id: "walk",     type: "cardio", durLabel: "30–40分钟", note: "随意节奏，户外优先" },
-        { id: "cat_cow",  sets: 2, reps: 10, ru: "次", type: "mob" },
-        { id: "terminal_knee_ext", sets: 1, reps: 12, ru: "次/边", type: "mob", note: "膝盖状态好时加入" },
-      ]},
-      { module: "stretch", title: "拉伸/收尾", dot: "br", exs: [
-        { id: "full_str", type: "mob", sets: 1, dur: "10分钟", note: "髋屈肌、梨状肌、胸椎" },
-      ]},
-    ],
-  },
 };
 
 // 动作库 — 要领、常见错误、注意事项
