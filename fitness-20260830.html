@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="健身">
+<meta name="theme-color" id="app-theme-color" content="#f5f5f7">
+<title>Tim · 健身 · 2026.08.30.4</title>
+<link rel="stylesheet" href="style.css?v=20260830.4">
+<link rel="manifest" href="manifest.json?v=20260830.4">
+</head>
+<body>
+<div class="app-shell">
+<div class="app-main">
+<header class="app-top hdr">
+  <div>
+    <div class="app-kicker hdr-sub" id="hdr-sub"></div>
+    <h1 class="app-title hdr-title">早上好，Tim</h1>
+  </div>
+  <div class="profile">
+    <span class="avatar">T</span>
+    <div><span class="phase-chip" id="phase-chip"></span><span class="profile-week" id="profile-week"></span></div>
+  </div>
+  <div id="hdr-stats" hidden></div>
+</header>
+
+<main id="tab-today" class="tab-pane active"><div id="today-content"></div></main>
+<main id="tab-cal" class="tab-pane"><div id="cal-content"></div></main>
+<main id="tab-exercises" class="tab-pane"><div id="exercises-content"></div></main>
+<main id="tab-templates" class="tab-pane"><div id="templates-content"></div></main>
+<main id="tab-more" class="tab-pane"><div id="prog-content"></div></main>
+
+<nav class="bottom-nav tab-bar" aria-label="主导航">
+  <button class="nav-item tab active" data-tab="today"><b>◉</b><span>今日</span></button>
+  <button class="nav-item tab" data-tab="cal"><b>▦</b><span>日历</span></button>
+  <button class="nav-item tab" data-tab="exercises"><b>⌁</b><span>动作</span></button>
+  <button class="nav-item tab" data-tab="templates"><b>≡</b><span>模板</span></button>
+  <button class="nav-item tab" data-tab="more"><b>•••</b><span>更多</span></button>
+</nav>
+</div>
+</div>
+
+<div class="sheet-ov" id="ex-modal-ov"><div class="sheet" id="ex-modal"><div class="sheet-handle"></div><button class="sheet-close" id="ex-modal-close">×</button><div id="ex-modal-body"></div></div></div>
+<div class="sheet-ov" id="complete-ov"><div class="sheet sheet-tall" id="complete-sheet"><div class="sheet-handle"></div><div class="sheet-hdr"><div class="sheet-title">今日记录确认</div><button class="sheet-close-sm" onclick="closeSheet('complete-ov')">×</button></div><div id="complete-body"></div></div></div>
+<div class="sheet-ov" id="tmpl-ov"><div class="sheet" id="tmpl-sheet"><div class="sheet-handle"></div><div class="sheet-title">选择今日训练</div><div id="tmpl-pick-body"></div></div></div>
+<div class="sheet-ov" id="add-ex-ov"><div class="sheet" id="add-ex-sheet"><div class="sheet-handle"></div><div class="sheet-hdr"><div class="sheet-title">添加动作</div><button class="sheet-close-sm" onclick="closeSheet('add-ex-ov')">×</button></div><div id="add-ex-list"></div></div></div>
+<div class="sheet-ov" id="tmpl-edit-ov"><div class="sheet sheet-tall" id="tmpl-edit-sheet"><div class="sheet-handle"></div><div class="sheet-hdr"><div class="sheet-title">编辑训练模板</div><button class="sheet-close-sm" onclick="closeSheet('tmpl-edit-ov')">×</button></div><div id="tmpl-edit-body"></div></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="version.js?v=20260830.4"></script>
+<script src="data.js?v=20260830.4"></script>
+<script src="app.js?v=20260830.4"></script>
+</body>
+</html>

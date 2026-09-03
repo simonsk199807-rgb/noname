@@ -6,28 +6,29 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="健身">
+<meta name="theme-color" id="app-theme-color" content="#f5f5f7">
 <title>Tim · 健身</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260830.4">
 <link rel="manifest" href="manifest.json">
 </head>
 <body>
 
-<header class="hdr">
-  <div class="hdr-top">
-    <div>
-      <h1 class="hdr-title">💪 健身</h1>
-      <div class="hdr-sub" id="hdr-sub"></div>
-    </div>
-    <span class="phase-chip" id="phase-chip"></span>
+<div class="app-shell">
+<div class="app-main">
+<header class="app-top hdr">
+  <div>
+    <div class="app-kicker hdr-sub" id="hdr-sub"></div>
+    <h1 class="app-title hdr-title">早上好，Tim</h1>
   </div>
-  <div class="hdr-stats" id="hdr-stats"></div>
+  <div class="profile">
+    <span class="avatar">T</span>
+    <div>
+      <span class="phase-chip" id="phase-chip"></span>
+      <span class="profile-week" id="profile-week"></span>
+    </div>
+  </div>
+  <div id="hdr-stats" hidden></div>
 </header>
-
-<nav class="tab-bar">
-  <button class="tab active" data-tab="today">今日</button>
-  <button class="tab" data-tab="cal">日历</button>
-  <button class="tab" data-tab="diet">饮食</button>
-</nav>
 
 <main id="tab-today" class="tab-pane active">
   <div id="today-content"></div>
@@ -37,9 +38,27 @@
   <div id="cal-content"></div>
 </main>
 
-<main id="tab-diet" class="tab-pane">
-  <div id="diet-content"></div>
+<main id="tab-exercises" class="tab-pane">
+  <div id="exercises-content"></div>
 </main>
+
+<main id="tab-templates" class="tab-pane">
+  <div id="templates-content"></div>
+</main>
+
+<main id="tab-more" class="tab-pane">
+  <div id="prog-content"></div>
+</main>
+
+<nav class="bottom-nav tab-bar" aria-label="主导航">
+  <button class="nav-item tab active" data-tab="today"><b>◉</b><span>今日</span></button>
+  <button class="nav-item tab" data-tab="cal"><b>▦</b><span>日历</span></button>
+  <button class="nav-item tab" data-tab="exercises"><b>⌁</b><span>动作</span></button>
+  <button class="nav-item tab" data-tab="templates"><b>≡</b><span>模板</span></button>
+  <button class="nav-item tab" data-tab="more"><b>•••</b><span>更多</span></button>
+</nav>
+</div>
+</div>
 
 <!-- 动作说明弹窗 -->
 <div class="sheet-ov" id="ex-modal-ov">
@@ -97,9 +116,9 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="version.js"></script>
-<script src="data.js"></script>
-<script src="app.js"></script>
+<script src="version.js?v=20260830.4"></script>
+<script src="data.js?v=20260830.4"></script>
+<script src="app.js?v=20260830.4"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').then(reg => {

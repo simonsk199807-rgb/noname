@@ -214,15 +214,49 @@ function migrateOldTemplates() {
 function init() {
   _viewDate = null;
   loadAll();
+  initThemeBySystemTime();
   renderHeader();
   initTabs();
   renderToday();
 }
 
+// 日间 07:00–18:59，夜间 19:00–06:59；系统时间变化时自动更新视觉主题。
+function getSystemTheme() {
+  const hour = new Date().getHours();
+  return hour >= 7 && hour < 19 ? 'day' : 'night';
+}
+function applyTheme(theme) {
+  document.body.dataset.theme = theme;
+  const color = theme === 'night' ? '#0c0d0f' : '#f5f5f7';
+  const meta = document.getElementById('app-theme-color');
+  if (meta) meta.setAttribute('content', color);
+}
+function initThemeBySystemTime() {
+  let activeTheme = getSystemTheme();
+  applyTheme(activeTheme);
+  const refresh = () => {
+    const nextTheme = getSystemTheme();
+    if (nextTheme !== activeTheme) {
+      activeTheme = nextTheme;
+      applyTheme(activeTheme);
+    }
+  };
+  window.setInterval(refresh, 60 * 1000);
+  document.addEventListener('visibilitychange', refresh);
+  window.addEventListener('focus', refresh);
+}
+
 // ── Header ───────────────────────────────────
 function renderHeader() {
+  const now = new Date();
+  const weekday = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()];
+  document.querySelector('.hdr-title').textContent = '早上好，Tim';
   document.getElementById('phase-chip').textContent = `Phase ${PHASE.num}`;
-  document.getElementById('hdr-sub').textContent = `${PHASE.label} · ${phaseWindowLabel()}`;
+  document.getElementById('hdr-sub').textContent = `星期${weekday} · ${now.getMonth() + 1}月${now.getDate()}日 · ${PHASE.label}`;
+  const firstDate = SCHEDULE.length ? SCHEDULE[0].d : todayStr();
+  const elapsed = Math.max(0, -dateDiffDays(firstDate, todayStr()));
+  const weekEl = document.getElementById('profile-week');
+  if (weekEl) weekEl.textContent = `第 ${Math.floor(elapsed / 7) + 1} 周`;
   const total = SCHEDULE.filter(x => x.rec).length;
   const done  = SCHEDULE.filter(x => isDayDone(x.d)).length;
   const remaining = Math.max(0, dateDiffDays(PHASE.testEndDate || PHASE.endDate, todayStr()));
@@ -242,9 +276,42 @@ function initTabs() {
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
       if (btn.dataset.tab === 'today')    { _viewDate = null; renderToday(); }
       if (btn.dataset.tab === 'cal')      renderCal();
-      if (btn.dataset.tab === 'diet')     { _dietDate = _dietDate || todayStr(); renderDiet(); }
+      if (btn.dataset.tab === 'exercises') renderExerciseLibrary();
+      if (btn.dataset.tab === 'templates') renderTemplateLibrary();
+      if (btn.dataset.tab === 'more')      renderProgress();
     });
   });
+}
+
+function renderExerciseLibrary() {
+  const items = Object.entries(EX_INFO || {}).sort((a, b) => String(a[1].name).localeCompare(String(b[1].name), 'zh-CN'));
+  document.getElementById('exercises-content').innerHTML = `<div class="library-wrap">
+    <div class="section-head page-section-head"><div><span class="page-kicker">EXERCISE LIBRARY</span><h2>动作</h2></div><span>${items.length} 个动作</span></div>
+    <div class="workout-list library-list">${items.map(([id, info]) => {
+      const def = info.defaults || {};
+      const meta = def.type === 'cardio' ? '有氧训练' : `${def.sets || 4} 组 × ${def.reps || 10} 次`;
+      return `<button class="workout library-workout" onclick="openExModal('${attr(id)}')">
+        <span class="workout-icon">⌁</span><span><strong class="workout-name">${esc(info.name || id)}</strong><small class="workout-meta">${esc(meta)}</small></span><span class="workout-result">查看说明 →</span>
+      </button>`;
+    }).join('')}</div>
+  </div>`;
+}
+
+function renderTemplateLibrary() {
+  const templates = [...PRIMARY_TEMPLATE_KEYS.map(k => [k, TMPLS[k]]), ...Object.entries(userTemplates)];
+  const d = todayStr();
+  document.getElementById('templates-content').innerHTML = `<div class="library-wrap">
+    <div class="section-head page-section-head"><div><span class="page-kicker">TRAINING TEMPLATES</span><h2>模板</h2></div><span>${templates.length} 套</span></div>
+    <div class="template-grid">${templates.map(([key, t]) => `<article class="template-card">
+      <div class="template-card-icon">${esc(t.short || t.icon)}</div><div><h3>${esc(t.label)}</h3><p>${esc(t.sub || '训练模板')}</p></div>
+      <button onclick="selectTmpl('${d}','${attr(key)}'); switchTab('today')">用于今日</button>
+    </article>`).join('')}</div>
+  </div>`;
+}
+
+function switchTab(tabName) {
+  const button = document.querySelector(`.tab[data-tab="${tabName}"]`);
+  if (button) button.click();
 }
 
 // ── Today Tab ────────────────────────────────
@@ -291,6 +358,22 @@ function renderToday(d) {
     const removed = new Set(day.removedExs || []);
     const added   = day.addedExs || [];
     const visibleCount = t.sections.reduce((sum, sec) => sum + sec.exs.filter(ex => !removed.has(ex.id)).length, 0) + added.length;
+    const completedCount = day.done ? visibleCount : Object.keys(day.record || {}).filter(id => !removed.has(id)).length;
+    const progress = visibleCount ? Math.min(100, Math.round(completedCount / visibleCount * 100)) : 0;
+
+    html += `<section class="session-hero hero">
+      <div class="session-copy">
+        <div class="session-kicker hero-label">TODAY'S SESSION</div>
+        <h2>${esc(t.label)}</h2>
+        <p class="hero-copy">按计划完成今天的动作，保持稳定、控制和完整记录。还有 ${Math.max(0, visibleCount - completedCount)} 个动作。</p>
+      </div>
+      <div class="progress-ring ring" style="--progress:${progress}%"><div class="ring-value"><strong>${progress}%</strong><span>已完成</span></div></div>
+    </section>
+    <div class="today-metrics metrics">
+      <div class="metric"><strong>${visibleCount}</strong><span>训练动作</span></div>
+      <div class="metric"><strong>${t.sections.length}</strong><span>训练模块</span></div>
+      <div class="metric"><strong>${day.done ? '完成' : '进行中'}</strong><span>今日状态</span></div>
+    </div>`;
 
     html += `<div class="module-summary">
       ${(t.sections || []).map(sec => `<span>${esc(moduleLabel(sec))}</span>`).join('')}
@@ -305,10 +388,13 @@ function renderToday(d) {
     </details>`;
     html += `<div class="today-progress-line"><span>${visibleCount} 个动作</span><span>模块固定 · 当天可调整</span></div>`;
 
+    html += `<div class="section-head workout-section-head"><h3>今日训练</h3><button onclick="openCompleteSheet('${target}')">查看记录 →</button></div>`;
+
     // 警告条
     if (t.warn) html += `<div class="warn-bar"><span>⚠️</span><span>${esc(t.warn)}</span></div>`;
 
     // 动作列表
+    html += `<div class="workout-list">`;
     t.sections.forEach(sec => {
       let hasVisible = sec.exs.some(ex => !removed.has(ex.id));
       if (!hasVisible) return;
@@ -335,6 +421,7 @@ function renderToday(d) {
         }
       });
     }
+    html += `</div>`;
 
     // 已移除提示
     if (removed.size > 0) {
@@ -382,13 +469,19 @@ function buildExCard(d, ex, isAdded) {
     meta = ex.dur || (ex.sets ? `${ex.sets} × ${ex.reps || '?'} ${ex.ru || ''}` : '');
   }
   const linkCount = getExerciseLinks(ex.id).length;
+  const day = getDay(d);
+  const completed = !!(day.done || (day.record && day.record[ex.id]));
+  const result = completed && day.record && day.record[ex.id] && day.record[ex.id].w !== undefined
+    ? `${day.record[ex.id].w} kg` : (completed ? '已记录' : '待开始');
 
-  return `<div class="ex-card">
+  return `<div class="ex-card workout${completed ? ' done' : ''}" onclick="openExModal('${ex.id}')">
+    <button class="workout-icon" onclick="event.stopPropagation();openCompleteSheet('${d}')">${completed ? '✓' : '＋'}</button>
     <div class="ex-main">
-      <div class="ex-name">${esc(info.name)}</div>
-      <div class="ex-meta">${esc(meta)}</div>
+      <div class="ex-name workout-name">${esc(info.name)}</div>
+      <div class="ex-meta workout-meta">${esc(meta)}</div>
       ${ex.note ? `<div class="ex-note">💡 ${esc(ex.note)}</div>` : ''}
     </div>
+    <div class="workout-result"><strong>${esc(result)}</strong><span>${completed ? '已完成' : '—'}</span></div>
     <div class="ex-btns">
       ${linkCount ? `<button class="ex-link-btn" onclick="openExModal('${ex.id}')">↗ ${linkCount}</button>` : ''}
       <button class="ex-q-btn" onclick="openExModal('${ex.id}')">说明</button>
@@ -1116,7 +1209,7 @@ function renderProgress() {
       <div>
         <div class="data-kicker">Phase ${PHASE.num} 数据底座</div>
         <div class="data-title">${esc(PHASE.label)}</div>
-        <div class="data-sub">${esc(PHASE.focus || '训练、饮食、身体状态统一记录')} · 周复盘在 Codex 对话中完成</div>
+        <div class="data-sub">${esc(PHASE.focus || '训练与身体状态统一记录')} · 周复盘在 Codex 对话中完成</div>
       </div>
       <div class="data-date">
         <span>${fmtDate(PHASE.testEndDate || PHASE.endDate)}</span>
@@ -1354,7 +1447,7 @@ function renderBackupCard(links) {
     <div class="sync-note">
       <strong>同步边界</strong>
       <span>代码、模板、动作库：发布到同一网址后，电脑和手机刷新即可更新。</span>
-      <span>训练记录、饮食、外部链接、我的模板：暂存在本机浏览器，跨设备请导出/导入 JSON。</span>
+      <span>训练记录、外部链接、我的模板：暂存在本机浏览器，跨设备请导出/导入 JSON。</span>
     </div>
     <div class="backup-actions">
       <button onclick="checkAppUpdate()">检查更新</button>
