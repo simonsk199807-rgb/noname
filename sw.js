@@ -1,4 +1,4 @@
-const APP_VERSION = '2026.08.30.4';
+const APP_VERSION = '2026.09.13.1';
 const CACHE = `ftc-${APP_VERSION}`;
 const ASSETS = [
   './index.html',

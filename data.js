@@ -167,10 +167,67 @@ const TMPLS = {
     ],
   },
 
+  // ── 腿部：单腿稳定 + 臀腿力量 ──────────────────────
+  LEG: {
+    label: "腿部", sub: "稳定与力量", icon: "腿部", short: "腿", calendarLabel: "腿部", color: "br",
+    warn: "动作以稳定和控制为先；膝、髋或腰出现明显不适时立即减小幅度、降重或停止",
+    sections: [
+      { module: "warmup", title: "腿部热身", dot: "br", exs: [
+        { id: "cat_cow", sets: 1, reps: 10, ru: "次", type: "mob", note: "缓慢活动脊柱" },
+        { id: "hip_90_90", sets: 1, reps: 8, ru: "次/边", type: "mob", note: "温和活动髋关节" },
+        { id: "terminal_knee_ext", sets: 1, reps: 12, ru: "次/边", type: "mob", note: "膝盖对准脚尖" },
+        { id: "clamshell", sets: 2, reps: 15, ru: "次/边", type: "mob", note: "激活臀中肌" },
+      ]},
+      { module: "main", title: "主训练：腿部四动作", dot: "br", exs: [
+        { id: "forward_lunge", sets: 3, reps: 10, ru: "次/边", type: "str", note: "步幅稳定，前膝对准脚尖" },
+        { id: "bulgarian_split_squat", sets: 3, reps: 8, ru: "次/边", type: "str", note: "先徒手或轻重量，保持骨盆稳定" },
+        { id: "seated_hip_adduction", sets: 4, reps: 12, ru: "次", type: "str", note: "控制夹紧与回放，不借惯性" },
+        { id: "glute_bridge", sets: 4, reps: 12, ru: "次", type: "str", note: "顶峰夹臀，不用腰椎过伸代偿" },
+      ]},
+      { module: "core", title: "核心收尾", dot: "br", exs: [
+        { id: "dead_bug", sets: 2, reps: 8, ru: "次/边", type: "mob", note: "腰背贴地，保持呼吸" },
+        { id: "bird_dog_f", sets: 2, reps: 8, ru: "次/边", type: "mob", note: "疲劳后仍保持躯干稳定" },
+      ]},
+      { module: "stretch", title: "拉伸/收尾", dot: "br", exs: [
+        { id: "hip_flex_str", type: "mob", sets: 1, dur: "60秒/边" },
+        { id: "piriform_str", type: "mob", sets: 1, dur: "45秒/边" },
+        { id: "adductor_rockback", type: "mob", sets: 1, reps: 10, ru: "次/边" },
+      ]},
+    ],
+  },
+
 };
 
 // 动作库 — 要领、常见错误、注意事项
 const EX_INFO = {
+  forward_lunge: {
+    name: "箭步蹲", tl: "股四头肌 · 臀腿稳定", p: ["股四头肌", "臀大肌"], s: ["腘绳肌", "臀中肌", "核心"],
+    tech: ["站姿收紧核心，一脚向前迈出稳定步幅", "前后膝同时弯曲，前膝始终对准脚尖", "前脚全脚掌发力站起，保持躯干稳定", "左右交替完成，先保证动作一致"],
+    err: ["前膝内扣", "步幅过小导致膝盖过度前移", "身体左右摇晃或用后脚蹬起"],
+    warn: "先用徒手或轻重量；膝、髋或腰出现明显不适时减小幅度或停止", videos: [],
+    defaults: { type: "str", sets: 3, reps: 10, unit: "次/边" },
+  },
+  bulgarian_split_squat: {
+    name: "保加利亚分腿蹲", tl: "单腿力量 · 臀腿控制", p: ["股四头肌", "臀大肌"], s: ["臀中肌", "腘绳肌", "核心"],
+    tech: ["后脚脚背轻放在稳定凳面，前脚站稳", "身体略前倾并保持脊柱中立", "前腿控制下蹲，膝盖沿脚尖方向移动", "以前脚发力站起，骨盆保持朝前"],
+    err: ["前膝内扣", "前脚离凳太近导致重心不稳", "后脚用力过多或下落过快"],
+    warn: "先徒手熟悉平衡；使用稳定支撑，失去平衡或关节明显不适时停止", videos: [],
+    defaults: { type: "str", sets: 3, reps: 8, unit: "次/边" },
+  },
+  seated_hip_adduction: {
+    name: "坐姿髋内收（坐姿夹腿）", tl: "大腿内侧 · 髋内收", p: ["大腿内收肌群"], s: ["骨盆稳定肌群"],
+    tech: ["调整座椅和挡板到舒适起始幅度", "背部贴靠垫，骨盆保持稳定", "呼气时平稳夹拢双腿，终点停一秒", "吸气缓慢回放，不让配重撞击"],
+    err: ["借身体前后摆动夹腿", "回放过快失去控制", "为了追求幅度强行拉开双腿"],
+    warn: "从轻重量和舒适幅度开始；腹股沟或髋部出现明显不适时停止", videos: [],
+    defaults: { type: "str", sets: 4, reps: 12, unit: "次" },
+  },
+  glute_bridge: {
+    name: "臀桥", tl: "臀大肌 · 髋伸展", p: ["臀大肌"], s: ["腘绳肌", "核心"],
+    tech: ["仰卧屈膝，双脚与髋同宽踩稳地面", "轻收下巴和肋骨，保持腰椎中立", "脚跟发力抬起髋部，顶峰主动夹臀", "控制下降，臀部接近地面后再重复"],
+    err: ["顶峰用腰椎过伸代替髋伸展", "双膝向内塌", "双脚离臀部过远导致腘绳肌抽紧"],
+    warn: "腰部有挤压感时降低高度并重新收紧核心；明显不适时停止", videos: [],
+    defaults: { type: "str", sets: 4, reps: 12, unit: "次" },
+  },
   cat_cow: {
     name: "猫牛式", tl: "脊柱活动度", p: ["竖脊肌", "多裂肌"], s: ["腹横肌"],
     tech: ["四点跪姿，手腕在肩下，膝盖在髋下", "吸气→牛式：肚脐下沉，尾骨上翘", "呼气→猫式：腰椎向上圆起，低头收下巴", "速度 3–4秒/次，逐节感受"],
@@ -417,6 +474,10 @@ const EX_INFO = {
 };
 
 const EX_PURPOSE = {
+  forward_lunge: "训练左右腿分别承重时的力量、平衡和髋膝对线，为步行、登阶和户外活动建立基础。",
+  bulgarian_split_squat: "通过单腿主导训练提升臀腿力量和稳定控制，并减少左右侧动作差异。",
+  seated_hip_adduction: "训练大腿内侧主动夹合与控制能力，补充腿部训练中的髋内收方向刺激。",
+  glute_bridge: "训练臀大肌主导的髋伸展，练习在保持核心稳定时完成臀部发力。",
   cat_cow: "给腰椎和胸椎做低负荷活动，减少久坐后的僵硬感，为腰椎稳定训练做准备。",
   bird_dog: "训练腰椎中立位下的抗旋转和对侧协调，服务于左腰髋稳定和日常起身、徒步负重。",
   dead_bug: "训练抗伸展核心和腹压控制，减少推举、跑步和深蹲类动作中腰椎代偿。",

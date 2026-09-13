@@ -1858,3 +1858,47 @@ body[data-theme="night"] .library-wrap { --card:var(--preview-panel); --tx:var(-
   .workout, .ex-card { grid-template-columns:40px minmax(0,1fr) auto; padding:13px 12px; }
   .workout-icon { width:40px; height:40px; }
 }
+
+/* 夜间模式：底部弹层必须与主界面使用同一套深色层级 */
+body[data-theme="night"] .sheet {
+  background: var(--preview-panel) !important;
+  color: var(--preview-ink) !important;
+  border-color: var(--preview-line) !important;
+}
+body[data-theme="night"] .sheet-title,
+body[data-theme="night"] .m-name,
+body[data-theme="night"] .to-label,
+body[data-theme="night"] .tmpl-opt-btn,
+body[data-theme="night"] .tmpl-opt-rest {
+  color: var(--preview-ink) !important;
+}
+body[data-theme="night"] .sheet-handle {
+  background: var(--preview-muted) !important;
+}
+body[data-theme="night"] .sheet-close,
+body[data-theme="night"] .sheet-close-sm {
+  color: var(--preview-ink) !important;
+  background: var(--preview-panel-2) !important;
+  border-color: var(--preview-line) !important;
+}
+body[data-theme="night"] .tmpl-opt-btn {
+  background: var(--preview-panel-2) !important;
+  border-color: var(--preview-line) !important;
+}
+body[data-theme="night"] .tmpl-opt-btn[class*="active-"] {
+  background: var(--preview-accent-soft) !important;
+  border-color: var(--preview-accent) !important;
+}
+body[data-theme="night"] .to-sub,
+body[data-theme="night"] .m-type,
+body[data-theme="night"] .m-sec-title {
+  color: var(--preview-muted) !important;
+}
+body[data-theme="night"] .to-icon {
+  background: var(--preview-accent-soft) !important;
+  color: var(--preview-accent) !important;
+}
+body[data-theme="night"] .tmpl-opt-rest {
+  background: var(--preview-panel-2) !important;
+  border-color: var(--preview-line) !important;
+}

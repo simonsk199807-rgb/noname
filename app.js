@@ -26,7 +26,7 @@ let _viewDate = null;  // null = 今日，string = 历史某天
 let _dietDate = null;  // 饮食 tab 当前日期
 let _editingTmplId = null;
 let _pendingUpdateWorker = null;
-const PRIMARY_TEMPLATE_KEYS = ['B', 'C', 'S', 'A'];
+const PRIMARY_TEMPLATE_KEYS = ['B', 'C', 'S', 'LEG', 'A'];
 const LEGACY_TEMPLATE_KEYS = { L: 'A', AR: 'A' };
 
 function loadAll() {
@@ -911,9 +911,21 @@ function openTemplateEditor(d) {
   openSheet('tmpl-edit-ov');
 }
 
+function templateExerciseIds(template) {
+  return new Set((template && template.sections || []).flatMap(section =>
+    (section.exs || []).map(exercise => exercise.id)
+  ));
+}
+
+function availableExerciseEntries(template) {
+  const used = templateExerciseIds(template);
+  return Object.entries(EX_INFO).filter(([id]) => !used.has(id));
+}
+
 function renderTemplateEditor(d) {
   const t = userTemplates[_editingTmplId];
   if (!t) return;
+  const available = availableExerciseEntries(t);
   let html = `<div class="tmpl-edit-note">正在编辑：${esc(t.label)}。默认模板不会被覆盖。</div>`;
   (t.sections || []).forEach((sec, si) => {
     html += `<div class="te-sec">
@@ -931,10 +943,11 @@ function renderTemplateEditor(d) {
     });
     html += `</div>`;
   });
-  html += `<div class="te-add">
+  html += `<div class="te-add">${available.length ? `
     <select id="te-module">${(t.sections || []).map((sec, i) => `<option value="${i}">${esc(moduleLabel(sec))}</option>`).join('')}</select>
-    <select id="te-ex">${Object.entries(EX_INFO).map(([id, info]) => `<option value="${id}">${esc(info.name)}</option>`).join('')}</select>
-    <button onclick="addTemplateEx('${d}')">添加到模板</button>
+    <select id="te-ex">${available.map(([id, info]) => `<option value="${id}">${esc(info.name)}</option>`).join('')}</select>
+    <button onclick="addTemplateEx('${d}')">添加到模板</button>` :
+    `<span class="te-empty">动作库中的动作已全部加入</span>`}
   </div>
   <button class="cs-save-btn" onclick="finishTemplateEdit('${d}')">完成编辑 ✓</button>`;
   document.getElementById('tmpl-edit-body').innerHTML = html;
@@ -961,8 +974,9 @@ function removeTemplateEx(secIdx, exIdx, d) {
 function addTemplateEx(d) {
   const secIdx = +document.getElementById('te-module').value;
   const exId = document.getElementById('te-ex').value;
-  const sec = userTemplates[_editingTmplId].sections[secIdx];
-  if (!sec || !EX_INFO[exId]) return;
+  const template = userTemplates[_editingTmplId];
+  const sec = template && template.sections[secIdx];
+  if (!sec || !EX_INFO[exId] || templateExerciseIds(template).has(exId)) return;
   sec.exs.push(buildExFromInfo(exId));
   saveUserTemplates();
   renderTemplateEditor(d);
@@ -1446,12 +1460,16 @@ function renderBackupCard(links) {
     </div>
     <div class="sync-note">
       <strong>同步边界</strong>
+      <span>Jeff 接收入口：电脑启动本地服务后打开 http://127.0.0.1:8787。手机或其他网址请先导出 JSON，传到电脑后在该入口点击“导入 JSON 给 Jeff”，不会覆盖电脑浏览器记录。localhost 只指当前设备，不能从手机连接电脑。不同网址的浏览器记录独立，首次请导入已有备份。</span>
       <span>代码、模板、动作库：发布到同一网址后，电脑和手机刷新即可更新。</span>
       <span>训练记录、外部链接、我的模板：暂存在本机浏览器，跨设备请导出/导入 JSON。</span>
     </div>
     <div class="backup-actions">
       <button onclick="checkAppUpdate()">检查更新</button>
       <button id="reload-update-btn" class="hidden" onclick="applyAppUpdate()">重新加载新版</button>
+      <button onclick="syncToJeff()">同步给 Jeff</button>
+      <button onclick="document.getElementById('jeff-file').click()">导入 JSON 给 Jeff</button>
+      <input id="jeff-file" type="file" accept="application/json,.json" style="display:none" onchange="importJsonToJeff(this.files && this.files[0]); this.value=''">
       <button onclick="exportBackup()">导出备份</button>
       <button onclick="document.getElementById('backup-file').click()">导入备份</button>
       <input id="backup-file" type="file" accept="application/json,.json" style="display:none" onchange="importBackup(this.files && this.files[0])">
@@ -1514,6 +1532,37 @@ function buildBackupPayload() {
       [SPORT_PERF_KEY]: sportPerf,
     },
   };
+}
+
+async function syncToJeff(payload = buildBackupPayload()) {
+  if (!['http://127.0.0.1:8787', 'http://localhost:8787'].includes(location.origin)) {
+    showToast('请导出 JSON，传到电脑后在本地 Jeff 入口导入');
+    return;
+  }
+  try {
+    const response = await fetch('/api/fitness/sync', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(10000),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error('sync_failed');
+    showToast('已同步给 Jeff ✓');
+  } catch (error) {
+    showToast('同步失败：请确认本地服务已启动，且文件为 Fitness 导出备份');
+  }
+}
+
+async function importJsonToJeff(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('导入失败：文件超过 10 MB');
+    return;
+  }
+  try {
+    await syncToJeff(JSON.parse(await file.text()));
+  } catch (error) {
+    showToast('导入失败：JSON 无法读取');
+  }
 }
 
 function exportBackup() {
