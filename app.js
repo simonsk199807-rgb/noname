@@ -482,10 +482,10 @@ function buildExCard(d, ex, isAdded) {
       ${ex.note ? `<div class="ex-note">💡 ${esc(ex.note)}</div>` : ''}
     </div>
     <div class="workout-result"><strong>${esc(result)}</strong><span>${completed ? '已完成' : '—'}</span></div>
+    <button class="ex-rm-btn" aria-label="移除 ${esc(info.name)}" onclick="event.stopPropagation();removeEx('${d}','${ex.id}',${!!isAdded})">移除</button>
     <div class="ex-btns">
       ${linkCount ? `<button class="ex-link-btn" onclick="openExModal('${ex.id}')">↗ ${linkCount}</button>` : ''}
       <button class="ex-q-btn" onclick="openExModal('${ex.id}')">说明</button>
-      <button class="ex-rm-btn" onclick="removeEx('${d}','${ex.id}',${!!isAdded})">✕</button>
     </div>
   </div>`;
 }
@@ -811,6 +811,42 @@ function deleteExerciseLink(exId, idx) {
 }
 
 // ── Add Exercise ─────────────────────────────
+const EXERCISE_GROUPS = [
+  { module: 'main', label: '主训练' },
+  { module: 'warmup', label: '热身' },
+  { module: 'core', label: '核心' },
+  { module: 'cardio', label: '有氧' },
+  { module: 'stretch', label: '拉伸/收尾' },
+  { module: 'other', label: '其他' },
+];
+
+function exerciseModuleMap() {
+  const map = new Map();
+  EXERCISE_GROUPS.filter(group => group.module !== 'other').forEach(group => {
+    Object.values(TMPLS || {}).forEach(template => {
+      (template.sections || [])
+        .filter(section => section.module === group.module)
+        .forEach(section => (section.exs || []).forEach(exercise => {
+          if (!map.has(exercise.id)) map.set(exercise.id, group.module);
+        }));
+    });
+  });
+  return map;
+}
+
+function groupAvailableExercises(activeIds) {
+  const moduleById = exerciseModuleMap();
+  const buckets = new Map(EXERCISE_GROUPS.map(group => [group.module, []]));
+  Object.entries(EX_INFO || {}).forEach(([id, info]) => {
+    if (activeIds.has(id)) return;
+    const module = moduleById.get(id) || 'other';
+    buckets.get(module).push({ id, name: info.name || id, tl: info.tl || '' });
+  });
+  return EXERCISE_GROUPS
+    .map(group => ({ module: group.module, label: group.label, items: buckets.get(group.module) }))
+    .filter(group => group.items.length);
+}
+
 function openAddEx(d) {
   const day     = getDay(d);
   const removed = new Set(day.removedExs || []);
@@ -825,20 +861,18 @@ function openAddEx(d) {
   }
   (day.addedExs || []).forEach(id => activeIds.add(id));
 
-  // 所有未在今天计划中的动作
-  const available = Object.entries(EX_INFO)
-    .filter(([id]) => !activeIds.has(id))
-    .map(([id, info]) => ({ id, name: info.name, tl: info.tl }));
+  const groups = groupAvailableExercises(activeIds);
 
-  if (available.length === 0) {
+  if (groups.length === 0) {
     document.getElementById('add-ex-list').innerHTML = `<div class="add-ex-empty">所有动作已在计划中</div>`;
   } else {
-    document.getElementById('add-ex-list').innerHTML = available.map(e =>
-      `<div class="add-ex-item" onclick="addExToday('${d}','${e.id}')">
-        <div class="add-ex-name">${esc(e.name)}</div>
-        <div class="add-ex-tl">${esc(e.tl)}</div>
-      </div>`
-    ).join('');
+    document.getElementById('add-ex-list').innerHTML = groups.map(group => `<section class="add-ex-group">
+      <div class="add-ex-group-title"><strong>${esc(group.label)}</strong><span>${group.items.length} 个</span></div>
+      ${group.items.map(e => `<button class="add-ex-item" onclick="addExToday('${d}','${attr(e.id)}')">
+        <span class="add-ex-name">${esc(e.name)}</span>
+        <span class="add-ex-tl">${esc(e.tl)}</span>
+      </button>`).join('')}
+    </section>`).join('');
   }
   openSheet('add-ex-ov');
 }

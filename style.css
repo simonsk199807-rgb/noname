@@ -1902,3 +1902,83 @@ body[data-theme="night"] .tmpl-opt-rest {
   background: var(--preview-panel-2) !important;
   border-color: var(--preview-line) !important;
 }
+
+/* 手机端：当天动作移除与分类动作选择 */
+.workout.ex-card {
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+}
+.workout .ex-rm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 48px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #f1c7c3;
+  border-radius: 11px;
+  background: #fff3f2;
+  color: #b4463d;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+.workout .ex-rm-btn:active {
+  background: #ffe7e4;
+}
+body[data-theme="night"] .workout .ex-rm-btn {
+  border-color: #70433f;
+  background: #352321;
+  color: #ffaaa2;
+}
+.add-ex-group {
+  margin: 0 0 22px;
+}
+.add-ex-group-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--preview-line, var(--bdr));
+  background: var(--preview-panel, var(--card));
+  color: var(--preview-ink, var(--tx));
+}
+.add-ex-group-title strong {
+  font-size: 15px;
+}
+.add-ex-group-title span {
+  color: var(--preview-muted, var(--mu));
+  font-size: 11px;
+  font-weight: 700;
+}
+.add-ex-group .add-ex-item {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--preview-line, var(--bdr));
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+body[data-theme="night"] .add-ex-group-title {
+  background: var(--preview-panel);
+}
+@media (max-width: 420px) {
+  .workout.ex-card {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+  }
+  .workout.ex-card .workout-result {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .workout.ex-card .ex-rm-btn {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+    min-height: 34px;
+  }
+}
